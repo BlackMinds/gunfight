@@ -2,13 +2,13 @@
   <main class="shell">
     <section class="hero">
       <div>
-        <p class="eyebrow">训练区 001</p>
+        <p class="eyebrow">外围基地 001</p>
         <h1>枪火放置</h1>
         <p class="copy">
-          俯视角放置枪战原型：走位拉扯、自动射击、怪群追击、首领节点、装备构筑。
+          俯视角自动射击原型：走位拉扯、清场推进、首领节点、战后结算和基地强化已经串成闭环。
         </p>
       </div>
-      <NuxtLink class="start" to="/game">进入战场</NuxtLink>
+      <NuxtLink class="start" to="/game">进入基地</NuxtLink>
     </section>
     <section class="loadout-strip" aria-label="初始构筑">
       <article v-for="item in starterLoadout" :key="item.name">
@@ -24,7 +24,7 @@
 const starterLoadout = [
   { name: '突击步枪', effect: '均衡扫射', color: '#d7c48a' },
   { name: '穿甲枪管', effect: '穿透 +1', color: '#6ea6c9' },
-  { name: '快速弹匣', effect: '换弹加速', color: '#78a866' }
+  { name: '快速弹匣', effect: '射速加成', color: '#78a866' }
 ]
 </script>
 

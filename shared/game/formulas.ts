@@ -2,7 +2,7 @@ export type EnemyKind = 'grunt' | 'fast' | 'heavy' | 'bomber'
 
 const stageNames = [
   { max: 50, name: '训练区', pressure: '基础暴徒' },
-  { max: 200, name: '街区战', pressure: '快速怪与重装怪' },
+  { max: 200, name: '街区战', pressure: '快速兵与重装兵' },
   { max: 500, name: '废城推进', pressure: '精英词缀' },
   { max: 1000, name: '军工封锁', pressure: '首领机制' },
   { max: 2000, name: '荒原战线', pressure: '元素流派' },
