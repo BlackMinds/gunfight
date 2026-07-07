@@ -1,0 +1,42 @@
+:root {
+  color-scheme: dark;
+  --ink: #f3efe5;
+  --muted: #b8b1a2;
+  --panel: #191815;
+  --panel-2: #232018;
+  --line: #4a4030;
+  --hazard: #e5b84b;
+  --red: #da4c3d;
+  --green: #78a866;
+  --blue: #6ea6c9;
+  --violet: #a778c8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#__nuxt {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(229, 184, 75, 0.13), transparent 28rem),
+    linear-gradient(135deg, #171815 0%, #242018 52%, #101111 100%);
+  color: var(--ink);
+  font-family: "Trebuchet MS", "Aptos", sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
