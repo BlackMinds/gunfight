@@ -1,5 +1,9 @@
 export type EnemyKind = 'grunt' | 'ranged' | 'fast' | 'heavy' | 'bomber'
 
+// 在玩家长期伤害成长落地前，避免敌人生命/伤害继续指数上扬；奖励与波次压力仍按真实关卡计算。
+export const ENEMY_STAT_GROWTH_CAP = 20
+export const STAGE_REWARD_CAPS = { gold: 121, alloy: 3 } as const
+
 const stageNames = [
   { max: 50, name: '训练区', pressure: '基础暴徒' },
   { max: 200, name: '街区战', pressure: '快速兵与重装兵' },
@@ -32,8 +36,9 @@ export function getDifficultyMultipliers(level: number) {
 
 export function scaleEnemyStats(level: number, kind: EnemyKind) {
   const base = baseEnemy[kind]
-  const multipliers = getDifficultyMultipliers(level)
-  const stageRate = 1 + Math.floor((level - 1) / 1000) * 0.18
+  const balancedLevel = Math.min(level, ENEMY_STAT_GROWTH_CAP)
+  const multipliers = getDifficultyMultipliers(balancedLevel)
+  const stageRate = 1 + Math.floor((balancedLevel - 1) / 1000) * 0.18
 
   return {
     label: String(base.label),
@@ -45,10 +50,12 @@ export function scaleEnemyStats(level: number, kind: EnemyKind) {
 
 export function rewardForStage(level: number, kills: number) {
   const { rewardMultiplier } = getDifficultyMultipliers(level)
+  const rawGold = Math.round((18 + kills * 2.4) * rewardMultiplier)
+  const rawAlloy = Math.max(1, Math.floor(level / 5) + Math.floor(kills / 18))
   return {
-    gold: Math.round((18 + kills * 2.4) * rewardMultiplier),
+    gold: Math.min(STAGE_REWARD_CAPS.gold, rawGold),
     exp: Math.round((12 + kills * 1.6) * rewardMultiplier),
-    alloy: Math.max(1, Math.floor(level / 5) + Math.floor(kills / 18)),
+    alloy: Math.min(STAGE_REWARD_CAPS.alloy, rawAlloy),
     parts: level % 5 === 0 ? 3 : 1
   }
 }

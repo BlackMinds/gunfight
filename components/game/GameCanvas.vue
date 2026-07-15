@@ -2,6 +2,14 @@
   <main class="game-screen" :class="`mode-${mode}`">
     <canvas ref="canvasRef" class="battlefield" aria-label="枪火放置战斗画面" />
 
+    <section v-if="replayUi.visible" class="r3-replay-status" data-testid="r3-replay-status" aria-live="polite">
+      <small>R3 开发回放 · {{ replayUi.status }}</small>
+      <b>{{ replayUi.currentLabel || '等待启动' }}</b>
+      <span>有效 {{ replayUi.validSamples }} / 12 · 剔除 {{ replayUi.rejectedSamples }}</span>
+      <span>{{ replayUi.message }}</span>
+      <output data-testid="r3-replay-results" hidden>{{ replayResultsJson }}</output>
+    </section>
+
     <section class="top-actions" aria-label="资源与菜单">
       <div class="currency-chip">
         <span>●</span>
@@ -540,6 +548,7 @@ import { getStageMeta, rewardForStage, scaleEnemyStats, type EnemyKind } from '~
 import { BASE_INVENTORY_CAPACITY, canAffordAttachmentReforge, getAttachmentReforgeCost, resolveAttachmentOverflow, type AttachmentReforgeCost } from '~/shared/game/inventory'
 import { enemyKindLabels, getEnemyPreview, getStageTypeLabel } from '~/shared/game/presentation'
 import { CURRENT_SAVE_VERSION, emptyLegacyBase, migrateAttachmentIdentity } from '~/shared/game/save'
+import { R3_REPLAY_FIXED_DELTA, clockwisePatrolVector, createR3ReplayPlan, createSeededRandom, supportedRareReforges, type R3ReplayPlanEntry, type R3ReplaySample, type R3ReplayStage } from '~/shared/game/replay'
 import { countWaveEnemies, createWavePlan, enemyKindForWave, levelTuning, resolvedSpawnInterval } from '~/shared/game/waves'
 import { buildStrategyInsights, dpsGapPercent, durationVerdict, type AttachmentContribution, type WaveRunRecord } from '~/shared/game/telemetry'
 import { attachmentPool, attachmentRarities, attachmentSlots, starterAttachments, starterWeapon, type Attachment, type AttachmentAffix, type AttachmentBonusKey, type AttachmentRarity, type AttachmentSlot } from '~/shared/game/weapons'
@@ -630,6 +639,27 @@ type SaveData = {
   acquireOrder?: Record<string, number>
 }
 
+type R3ReplayBatchOptions = { speed?: number; baseSeed?: number }
+type R3ReplayStatus = {
+  status: string
+  currentLabel: string
+  validSamples: number
+  rejectedSamples: number
+  message: string
+  samples: R3ReplaySample[]
+  rejected: R3ReplaySample[]
+}
+
+declare global {
+  interface Window {
+    __gunfightR3Replay?: {
+      start: (options?: R3ReplayBatchOptions) => Promise<void>
+      stop: () => void
+      getStatus: () => R3ReplayStatus
+    }
+  }
+}
+
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const SAVE_KEY = 'gunfight-growth-save-v1'
 const keys = new Set<string>()
@@ -671,6 +701,21 @@ const runStats = reactive({
 })
 const settlementEquipNotice = ref<{ equipped: string; replaced?: string } | null>(null)
 const overflowSalvageNotice = ref<{ items: Attachment[]; gold: number; parts: number } | null>(null)
+const replayUi = reactive({
+  visible: false,
+  status: 'idle',
+  currentLabel: '',
+  validSamples: 0,
+  rejectedSamples: 0,
+  message: ''
+})
+const replayResultsJson = computed(() => {
+  void replayUi.validSamples
+  void replayUi.rejectedSamples
+  void replayUi.status
+  void replayUi.message
+  return JSON.stringify(replayStatus())
+})
 const player = reactive({
   x: 0,
   y: 0,
@@ -753,6 +798,24 @@ let waveStartTime = 0
 let context: CanvasRenderingContext2D | null = null
 let canPersist = false
 let attachmentAcquireCursor = 0
+let replayPersistenceSuppressed = false
+const replayRuntime = {
+  running: false,
+  plan: [] as R3ReplayPlanEntry[],
+  planIndex: 0,
+  attempt: 1,
+  speed: 1,
+  random: Math.random as () => number,
+  waypointIndex: 0,
+  samples: [] as R3ReplaySample[],
+  rejected: [] as R3ReplaySample[],
+  issues: new Set<string>(),
+  maxFrameGapMs: 0,
+  previousFrameAt: 0,
+  wallStartedAt: 0,
+  startResources: { gold: 0, alloy: 0, parts: 0 },
+  fixtureFactory: null as null | ((stage: R3ReplayStage) => SaveData)
+}
 
 const stageMeta = computed(() => getStageMeta(stage.value))
 const stageLabel = computed(() => stage.value.toString().padStart(4, '0'))
@@ -942,7 +1005,7 @@ function getAttachmentDropProfile(level: number) {
 
 function rollWeightedRarity(weights: Record<AttachmentRarity, number>) {
   const total = attachmentRarities.reduce((sum, rarity) => sum + weights[rarity], 0)
-  let cursor = Math.random() * total
+  let cursor = gameplayRandom() * total
   for (const rarity of attachmentRarities) {
     cursor -= weights[rarity]
     if (cursor <= 0) return rarity
@@ -960,7 +1023,8 @@ function sameAttachment(a: Attachment, b: Attachment) {
 
 function nextAttachmentId(source: string) {
   attachmentInstanceCursor += 1
-  return `${source}-${Date.now().toString(36)}-${attachmentInstanceCursor.toString(36)}`
+  const timeToken = replayRuntime.running ? `r3-${replayRuntime.plan[replayRuntime.planIndex]?.seed ?? 0}` : Date.now().toString(36)
+  return `${source}-${timeToken}-${attachmentInstanceCursor.toString(36)}`
 }
 
 const bonusLabels: Record<AttachmentBonusKey, string> = {
@@ -1010,8 +1074,8 @@ function rollSubAffixes(rarity: AttachmentRarity, mainKey: AttachmentBonusKey, l
   const available = bonusKeys.filter((key) => key !== mainKey && key !== lockedAffix?.key)
   const affixes: AttachmentAffix[] = lockedAffix ? [{ ...lockedAffix }] : []
   for (let i = affixes.length; i < subAffixCountFor(rarity); i++) {
-    const key = available.splice(Math.floor(Math.random() * available.length), 1)[0] ?? mainKey
-    const roll = 0.78 + Math.random() * 0.44
+    const key = available.splice(Math.floor(gameplayRandom() * available.length), 1)[0] ?? mainKey
+    const roll = 0.78 + gameplayRandom() * 0.44
     const rankScale = 0.82 + rank * 0.22
     affixes.push(createAffix(key, subAffixBase[key] * rankScale * roll, '副词条'))
   }
@@ -1028,7 +1092,7 @@ function combineAffixBonuses(mainAffix: AttachmentAffix | undefined, subAffixes:
 }
 
 function createAttachmentInstance(template: Attachment, source: string, rarity = template.rarity, fixedRoll?: number): Attachment {
-  const roll = fixedRoll ?? Math.round((0.82 + Math.random() * 0.36) * 100) / 100
+  const roll = fixedRoll ?? Math.round((0.82 + gameplayRandom() * 0.36) * 100) / 100
   const templateRank = Math.max(0, attachmentRarities.indexOf(template.rarity))
   const targetRank = Math.max(0, attachmentRarities.indexOf(rarity))
   const rarityScale = rarityScaleFor(rarity) / (rarityScaleFor(template.rarity) || 1)
@@ -1522,7 +1586,7 @@ function applyBaseStats() {
 }
 
 function saveGame() {
-  if (!canPersist) return
+  if (!canPersist || replayPersistenceSuppressed) return
   const payload = {
     saveVersion: CURRENT_SAVE_VERSION,
     stage: stage.value,
@@ -1537,29 +1601,32 @@ function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(payload))
 }
 
+function applySaveData(saved: Partial<SaveData>) {
+  highestCleared.value = clamp(Math.round(Number(saved.highestCleared) || Math.max(0, (Number(saved.stage) || 1) - 1)), 0, 10000)
+  stage.value = clamp(Math.round(Number(saved.stage) || 1), 1, debugStageSelection ? 10000 : highestCleared.value + 1)
+  stageDraft.value = stage.value
+  Object.assign(resources, { gold: saved.resources?.gold ?? 80, alloy: saved.resources?.alloy ?? 3, parts: saved.resources?.parts ?? 0 })
+  Object.assign(base, emptyLegacyBase())
+  player.level = Math.max(1, Number(saved.player?.level) || 1)
+  player.exp = Math.max(0, Number(saved.player?.exp) || 0)
+  player.hp = Math.max(1, Number(saved.player?.hp) || player.hp)
+  const savedEquipped = (saved.equipped ?? starterAttachments.map((item) => createAttachmentInstance(item, 'starter', item.rarity, 1))).map((item) => reviveAttachment(item, 'equipped')).filter(Boolean) as Attachment[]
+  const savedInventoryNames = saved.inventory ?? []
+  const savedInventory = savedInventoryNames.map((item) => reviveAttachment(item, 'inventory')).filter(Boolean) as Attachment[]
+  equippedParts.splice(0, equippedParts.length, ...savedEquipped)
+  inventory.value = savedInventory
+  Object.keys(attachmentAcquireOrder).forEach((name) => delete attachmentAcquireOrder[name])
+  inventory.value.forEach((item, index) => ensureAttachmentOrder(item, saved.acquireOrder?.[attachmentKey(item)] ?? saved.acquireOrder?.[item.name] ?? inventory.value.length - index))
+  applyInventoryCapacity()
+  selectedSlot.value = '全部'
+  selectedRarity.value = '全部'
+}
+
 function loadGame() {
   const raw = localStorage.getItem(SAVE_KEY)
   if (!raw) return
   try {
-    const saved = JSON.parse(raw) as Partial<SaveData>
-    highestCleared.value = clamp(Math.round(Number(saved.highestCleared) || Math.max(0, (Number(saved.stage) || 1) - 1)), 0, 10000)
-    stage.value = clamp(Math.round(Number(saved.stage) || 1), 1, debugStageSelection ? 10000 : highestCleared.value + 1)
-    stageDraft.value = stage.value
-    Object.assign(resources, { gold: saved.resources?.gold ?? 80, alloy: saved.resources?.alloy ?? 3, parts: saved.resources?.parts ?? 0 })
-    Object.assign(base, emptyLegacyBase())
-    player.level = Math.max(1, Number(saved.player?.level) || 1)
-    player.exp = Math.max(0, Number(saved.player?.exp) || 0)
-    player.hp = Math.max(1, Number(saved.player?.hp) || player.hp)
-    const savedEquipped = (saved.equipped ?? starterAttachments.map((item) => createAttachmentInstance(item, 'starter', item.rarity, 1))).map((item) => reviveAttachment(item, 'equipped')).filter(Boolean) as Attachment[]
-    const savedInventoryNames = saved.inventory ?? []
-    const savedInventory = savedInventoryNames.map((item) => reviveAttachment(item, 'inventory')).filter(Boolean) as Attachment[]
-    equippedParts.splice(0, equippedParts.length, ...savedEquipped)
-    inventory.value = savedInventory
-    Object.keys(attachmentAcquireOrder).forEach((name) => delete attachmentAcquireOrder[name])
-    inventory.value.forEach((item, index) => ensureAttachmentOrder(item, saved.acquireOrder?.[attachmentKey(item)] ?? saved.acquireOrder?.[item.name] ?? inventory.value.length - index))
-    applyInventoryCapacity()
-    selectedSlot.value = '全部'
-    selectedRarity.value = '全部'
+    applySaveData(JSON.parse(raw) as Partial<SaveData>)
   } catch {
     localStorage.removeItem(SAVE_KEY)
   }
@@ -1626,7 +1693,7 @@ function rollAttachment(rarityWeights: Record<AttachmentRarity, number>) {
   const desiredRarity = rollWeightedRarity(rarityWeights)
   const rarityPool = attachmentPool.filter((item) => item.rarity === desiredRarity)
   const pool = rarityPool.length ? rarityPool : attachmentPool
-  return createAttachmentInstance(pool[Math.floor(Math.random() * pool.length)], 'drop', desiredRarity)
+  return createAttachmentInstance(pool[Math.floor(gameplayRandom() * pool.length)], 'drop', desiredRarity)
 }
 
 function applyInventoryCapacity(protectedItems: Attachment[] = []) {
@@ -1674,6 +1741,10 @@ function choosePostBattle(choice: PostBattleChoice) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
+}
+
+function gameplayRandom() {
+  return replayRuntime.running ? replayRuntime.random() : Math.random()
 }
 
 function formatClock(totalSeconds: number) {
@@ -1727,6 +1798,10 @@ function resizeCanvas() {
 
 function handleKeydown(event: KeyboardEvent) {
   const key = event.key.toLowerCase()
+  if (replayRuntime.running) {
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '1', '2', '3'].includes(key)) markReplayIssue(`检测到人工按键：${key}`)
+    return
+  }
   if (upgradeChoices.value.length && ['1', '2', '3'].includes(key)) {
     const choice = upgradeChoices.value[Number(key) - 1]
     if (choice) chooseUpgrade(choice)
@@ -1739,10 +1814,21 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 function handleKeyup(event: KeyboardEvent) {
+  if (replayRuntime.running) return
   keys.delete(event.key.toLowerCase())
 }
 
 function inputVector(): Vec {
+  if (replayRuntime.running) {
+    const canvas = canvasRef.value
+    if (!canvas) {
+      markReplayIssue('画布不可用，无法生成固定路线输入')
+      return { x: 0, y: 0 }
+    }
+    const patrol = clockwisePatrolVector(player, getPlayArea(canvas.clientWidth, canvas.clientHeight), replayRuntime.waypointIndex)
+    replayRuntime.waypointIndex = patrol.waypointIndex
+    return patrol.vector
+  }
   const x = Number(keys.has('d') || keys.has('arrowright')) - Number(keys.has('a') || keys.has('arrowleft'))
   const y = Number(keys.has('s') || keys.has('arrowdown')) - Number(keys.has('w') || keys.has('arrowup'))
   const len = Math.hypot(x, y) || 1
@@ -1755,7 +1841,7 @@ function announceBanner(text: string, tone: 'normal' | 'elite' | 'victory' = 'no
 }
 
 function playSound(kind: 'hit' | 'critical' | 'kill' | 'pickup' | 'wave' | 'elite' | 'hurt' | 'victory') {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || replayRuntime.running) return
   try {
     audioContext ??= new AudioContext()
     const oscillator = audioContext.createOscillator()
@@ -1784,10 +1870,10 @@ function spawnEnemy(options: { boss?: boolean; elite?: boolean; kind?: EnemyKind
   if (!canvas) return
   const forceBoss = Boolean(options.boss)
   const area = getPlayArea(canvas.clientWidth, canvas.clientHeight)
-  const edge = Math.floor(Math.random() * 4)
+  const edge = Math.floor(gameplayRandom() * 4)
   const spawnInset = forceBoss ? 28 : 18
-  const x = edge === 1 ? area.x + area.width - spawnInset : edge === 3 ? area.x + spawnInset : area.x + Math.random() * area.width
-  const y = edge === 0 ? area.y + spawnInset : edge === 2 ? area.y + area.height - spawnInset : area.y + Math.random() * area.height
+  const x = edge === 1 ? area.x + area.width - spawnInset : edge === 3 ? area.x + spawnInset : area.x + gameplayRandom() * area.width
+  const y = edge === 0 ? area.y + spawnInset : edge === 2 ? area.y + area.height - spawnInset : area.y + gameplayRandom() * area.height
   const kind = forceBoss ? levelTuning.boss.kind : options.kind ?? 'grunt'
   const stats = scaleEnemyStats(stage.value, kind)
   const elite = forceBoss || Boolean(options.elite)
@@ -1802,7 +1888,7 @@ function spawnEnemy(options: { boss?: boolean; elite?: boolean; kind?: EnemyKind
     vx: 0,
     vy: 0,
     angle: Math.atan2(player.y - y, player.x - x),
-    wobble: Math.random() * Math.PI * 2,
+    wobble: gameplayRandom() * Math.PI * 2,
     hp: maxHp,
     maxHp,
     speed: stats.speed * multipliers.speed,
@@ -1812,10 +1898,10 @@ function spawnEnemy(options: { boss?: boolean; elite?: boolean; kind?: EnemyKind
     boss: forceBoss,
     kind,
     label: forceBoss ? levelTuning.boss.label : elite ? `精英${stats.label}` : stats.label,
-    attackTimer: 0.65 + Math.random() * 0.5,
+    attackTimer: 0.65 + gameplayRandom() * 0.5,
     aimTime: 0,
     aimAngle: Math.atan2(player.y - y, player.x - x),
-    chargeCooldown: 1.4 + Math.random(),
+    chargeCooldown: 1.4 + gameplayRandom(),
     chargeWindup: 0,
     chargeTime: 0,
     chargeHit: false,
@@ -1845,8 +1931,8 @@ function shootNearest() {
     return b < a ? enemy : nearest
   })
   const angle = Math.atan2(target.y - player.y, target.x - player.x)
-  const finalAngle = angle + (Math.random() - 0.5) * weapon.spread
-  const critical = Math.random() < modifiers.critRate
+  const finalAngle = angle + (gameplayRandom() - 0.5) * weapon.spread
+  const critical = gameplayRandom() < modifiers.critRate
   bullets.push({
     x: player.x,
     y: player.y,
@@ -2147,6 +2233,12 @@ function update(delta: number) {
     clearCombatFeedback()
     return
   }
+  if (replayRuntime.running) {
+    if (upgradeChoices.value.length) chooseUpgrade(upgradeChoices.value[0])
+    useSkill('dash')
+    useSkill('overload')
+    useSkill('pulse')
+  }
   if (upgradeChoices.value.length) {
     screenShake = Math.max(0, screenShake - delta)
     playerHitFlash = Math.max(0, playerHitFlash - delta)
@@ -2406,7 +2498,7 @@ function update(delta: number) {
     highestCleared.value = Math.max(highestCleared.value, stage.value)
     const stageReward = rewardForStage(stage.value, kills.value)
     const profile = getAttachmentDropProfile(stage.value)
-    const attachmentDropCount = Math.random() < profile.dropChance ? Math.max(1, stageReward.parts) : 0
+    const attachmentDropCount = gameplayRandom() < profile.dropChance ? Math.max(1, stageReward.parts) : 0
     const attachmentDrops = grantAttachmentDrops(attachmentDropCount, profile.rarityWeights)
     const reward: Reward = { ...stageReward, attachments: attachmentDrops }
     resources.gold += reward.gold
@@ -2578,10 +2670,166 @@ function draw() {
   ctx.restore()
 }
 
+function markReplayIssue(issue: string) {
+  if (!replayRuntime.running) return
+  replayRuntime.issues.add(issue)
+  replayUi.message = issue
+}
+
+function replayStatus(): R3ReplayStatus {
+  return {
+    status: replayUi.status,
+    currentLabel: replayUi.currentLabel,
+    validSamples: replayRuntime.samples.length,
+    rejectedSamples: replayRuntime.rejected.length,
+    message: replayUi.message,
+    samples: replayRuntime.samples.map((sample) => ({ ...sample })),
+    rejected: replayRuntime.rejected.map((sample) => ({ ...sample }))
+  }
+}
+
+function stopR3Replay() {
+  replayRuntime.running = false
+  replayUi.status = 'stopped'
+  replayUi.message = '回放已停止；刷新页面可恢复原存档状态'
+  keys.clear()
+}
+
+function beginR3ReplayAttempt() {
+  const entry = replayRuntime.plan[replayRuntime.planIndex]
+  const createFixture = replayRuntime.fixtureFactory
+  if (!entry || !createFixture) {
+    replayRuntime.running = false
+    replayUi.status = 'complete'
+    replayUi.currentLabel = ''
+    replayUi.message = `12 局有效样本完成，剔除并重跑 ${replayRuntime.rejected.length} 局`
+    return
+  }
+
+  const fixture = structuredClone(createFixture(entry.stage))
+  mode.value = 'base'
+  lastRun.value = null
+  settlementEquipNotice.value = null
+  overflowSalvageNotice.value = null
+  applySaveData(fixture)
+  nextEnemyId = 1
+  attachmentInstanceCursor = 0
+  attachmentAcquireCursor = 0
+  replayRuntime.random = createSeededRandom(entry.seed)
+  replayRuntime.waypointIndex = 0
+  replayRuntime.issues.clear()
+  replayRuntime.maxFrameGapMs = 0
+  replayRuntime.previousFrameAt = performance.now()
+  replayRuntime.wallStartedAt = performance.now()
+  replayRuntime.startResources = { ...resources }
+  replayUi.status = 'running'
+  replayUi.currentLabel = `第 ${entry.stage} 关 · 第 ${entry.run}/3 局 · 尝试 ${replayRuntime.attempt}`
+  replayUi.message = `固定种子 ${entry.seed} · ${replayRuntime.speed}× 固定步长`
+  if (document.hidden) markReplayIssue('启动时页面处于隐藏状态')
+  startStage()
+}
+
+function finishR3ReplayAttempt() {
+  const entry = replayRuntime.plan[replayRuntime.planIndex]
+  const result = lastRun.value
+  if (!entry) return
+  if (!result) markReplayIssue('结算对象缺失')
+  const goldIncome = resources.gold - replayRuntime.startResources.gold
+  const alloyIncome = resources.alloy - replayRuntime.startResources.alloy
+  const partsIncome = resources.parts - replayRuntime.startResources.parts
+  const reforgeSupport = supportedRareReforges(goldIncome, alloyIncome)
+  const issueText = [...replayRuntime.issues].join('；')
+  const sample: R3ReplaySample = {
+    ...entry,
+    attempt: replayRuntime.attempt,
+    valid: Boolean(result) && !issueText,
+    result: result?.victory ? '通关' : '失败',
+    duration: Math.round((result?.stats.duration ?? stageTimer.value) * 1000) / 1000,
+    wallDuration: Math.round(((performance.now() - replayRuntime.wallStartedAt) / 1000) * 1000) / 1000,
+    goldIncome,
+    alloyIncome,
+    partsIncome,
+    unlockedReforges: reforgeSupport.unlocked,
+    lockedReforges: reforgeSupport.locked,
+    deathReason: result?.victory ? '—' : result?.stats.deathCombination || `第 ${currentWave.value} 波生命归零`,
+    inputOrSamplingIssue: issueText || '无',
+    maxFrameGapMs: Math.round(replayRuntime.maxFrameGapMs * 100) / 100,
+    inventoryCount: inventory.value.length,
+    protectedOverflow: inventoryOverCapacity.value
+  }
+
+  if (!sample.valid) {
+    replayRuntime.rejected.push(sample)
+    replayUi.rejectedSamples = replayRuntime.rejected.length
+    replayRuntime.attempt += 1
+    if (replayRuntime.attempt > 5) {
+      replayRuntime.running = false
+      replayUi.status = 'error'
+      replayUi.message = `${replayUi.currentLabel} 连续 5 次无效，批次停止`
+      return
+    }
+    replayUi.message = `样本无效并自动重跑：${sample.inputOrSamplingIssue}`
+    beginR3ReplayAttempt()
+    return
+  }
+
+  replayRuntime.samples.push(sample)
+  replayUi.validSamples = replayRuntime.samples.length
+  replayRuntime.planIndex += 1
+  replayRuntime.attempt = 1
+  replayUi.message = `${sample.result} · ${sample.duration.toFixed(3)} 秒 · 金币 +${sample.goldIncome}`
+  beginR3ReplayAttempt()
+}
+
+async function startR3Replay(options: R3ReplayBatchOptions = {}) {
+  if (!import.meta.dev) throw new Error('R3 回放器仅在开发/测试环境可用')
+  if (replayRuntime.running) throw new Error('R3 回放批次已在运行')
+  replayUi.visible = true
+  replayUi.status = 'loading'
+  replayUi.message = '正在载入 R2 固定构筑夹具'
+  const fixtures = await import('~/tests/fixtures/r2')
+  replayRuntime.fixtureFactory = (targetStage) => fixtures.createR2BalanceSave(targetStage) as SaveData
+  replayRuntime.plan = createR3ReplayPlan(options.baseSeed)
+  replayRuntime.planIndex = 0
+  replayRuntime.attempt = 1
+  replayRuntime.speed = clamp(Math.round(options.speed ?? 12), 1, 60)
+  replayRuntime.samples = []
+  replayRuntime.rejected = []
+  replayRuntime.running = true
+  replayPersistenceSuppressed = true
+  replayUi.validSamples = 0
+  replayUi.rejectedSamples = 0
+  keys.clear()
+  beginR3ReplayAttempt()
+}
+
+function handleReplayBlur() {
+  markReplayIssue('窗口失焦')
+}
+
+function handleReplayVisibility() {
+  if (document.hidden) markReplayIssue('页面隐藏')
+}
+
 function loop(now: number) {
-  const delta = Math.min((now - lastTime) / 1000 || 0, 0.05)
-  lastTime = now
-  update(delta)
+  if (replayRuntime.running) {
+    const frameGapMs = Math.max(0, now - replayRuntime.previousFrameAt)
+    replayRuntime.previousFrameAt = now
+    replayRuntime.maxFrameGapMs = Math.max(replayRuntime.maxFrameGapMs, frameGapMs)
+    if (frameGapMs > 1000) markReplayIssue(`帧输入中断 ${Math.round(frameGapMs)}ms`)
+    for (let step = 0; step < replayRuntime.speed; step += 1) {
+      update(R3_REPLAY_FIXED_DELTA)
+      if (mode.value === 'settlement') {
+        finishR3ReplayAttempt()
+        break
+      }
+    }
+    lastTime = now
+  } else {
+    const delta = Math.min((now - lastTime) / 1000 || 0, 0.05)
+    lastTime = now
+    update(delta)
+  }
   draw()
   animationFrame = requestAnimationFrame(loop)
 }
@@ -2704,6 +2952,22 @@ onMounted(() => {
   window.addEventListener('resize', resizeCanvas)
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('keyup', handleKeyup)
+  if (import.meta.dev) {
+    window.__gunfightR3Replay = { start: startR3Replay, stop: stopR3Replay, getStatus: replayStatus }
+    window.addEventListener('blur', handleReplayBlur)
+    document.addEventListener('visibilitychange', handleReplayVisibility)
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('r3-replay') === '1') {
+      const speed = Number(params.get('speed')) || 12
+      const baseSeed = Number(params.get('seed')) || undefined
+      void startR3Replay({ speed, baseSeed }).catch((error: unknown) => {
+        replayRuntime.running = false
+        replayUi.visible = true
+        replayUi.status = 'error'
+        replayUi.message = error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
   animationFrame = requestAnimationFrame(loop)
 })
 
@@ -2712,6 +2976,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeCanvas)
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('keyup', handleKeyup)
+  if (import.meta.dev) {
+    window.removeEventListener('blur', handleReplayBlur)
+    document.removeEventListener('visibilitychange', handleReplayVisibility)
+    delete window.__gunfightR3Replay
+  }
 })
 </script>
 
@@ -2723,6 +2992,32 @@ onBeforeUnmount(() => {
   position: relative;
   background: #10100e;
   isolation: isolate;
+}
+
+.r3-replay-status {
+  position: fixed;
+  z-index: 30;
+  top: 12px;
+  left: 50%;
+  width: min(520px, calc(100vw - 24px));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(229, 184, 75, 0.65);
+  background: rgba(12, 12, 10, 0.92);
+  color: #f3efe5;
+  pointer-events: none;
+}
+
+.r3-replay-status small,
+.r3-replay-status span {
+  color: #c8c2b5;
+}
+
+.r3-replay-status span:last-child {
+  grid-column: 1 / -1;
 }
 
 .game-screen::before,
