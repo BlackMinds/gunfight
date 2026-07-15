@@ -1,15 +1,22 @@
 :root {
   color-scheme: dark;
-  --ink: #f3efe5;
-  --muted: #b8b1a2;
-  --panel: #191815;
-  --panel-2: #232018;
-  --line: #4a4030;
-  --hazard: #e5b84b;
-  --red: #da4c3d;
-  --green: #78a866;
-  --blue: #6ea6c9;
-  --violet: #a778c8;
+  --ink: #f4f1e7;
+  --muted: #b7b4aa;
+  --panel: #15181b;
+  --panel-2: #20252a;
+  --line: #4f5b61;
+  --hazard: #f0bf57;
+  --red: #e15748;
+  --green: #68c18d;
+  --blue: #77b7d7;
+  --violet: #b487d7;
+  --steel: #7d8b92;
+  --copper: #b66f45;
+  --shadow-strong: rgba(0, 0, 0, 0.58);
+  --font-caption: 12px;
+  --font-body: 14px;
+  --font-control: 13px;
+  --font-value: 16px;
 }
 
 * {
@@ -26,10 +33,12 @@ body,
 
 body {
   background:
-    radial-gradient(circle at 18% 8%, rgba(229, 184, 75, 0.13), transparent 28rem),
-    linear-gradient(135deg, #171815 0%, #242018 52%, #101111 100%);
+    radial-gradient(circle at 18% 8%, rgba(240, 191, 87, 0.12), transparent 28rem),
+    radial-gradient(circle at 88% 14%, rgba(119, 183, 215, 0.1), transparent 24rem),
+    linear-gradient(135deg, #111518 0%, #24211c 52%, #0d1112 100%);
   color: var(--ink);
-  font-family: "Trebuchet MS", "Aptos", sans-serif;
+  font-family: "Microsoft YaHei UI", "Aptos", "Segoe UI", sans-serif;
+  text-rendering: geometricPrecision;
 }
 
 button,

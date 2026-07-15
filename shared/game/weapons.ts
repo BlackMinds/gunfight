@@ -3,21 +3,28 @@ export const attachmentRarities = ['普通', '精良', '稀有', '史诗'] as co
 
 export type AttachmentSlot = (typeof attachmentSlots)[number]
 export type AttachmentRarity = (typeof attachmentRarities)[number]
+export type AttachmentBonusKey = 'damage' | 'fireRate' | 'maxHp' | 'pickup' | 'speed' | 'pierce' | 'expGain' | 'critRate'
+export type AttachmentAffixTier = '主词条' | '副词条'
+export type AttachmentAffix = {
+  key: AttachmentBonusKey
+  label: string
+  value: number
+  tier: AttachmentAffixTier
+}
 
 export type Attachment = {
+  id?: string
+  templateKey?: string
+  roll?: number
+  level?: number
+  favorite?: boolean
+  mainAffix?: AttachmentAffix
+  subAffixes?: AttachmentAffix[]
   name: string
   slot: AttachmentSlot
   rarity: AttachmentRarity
   effect: string
-  bonuses?: {
-    damage?: number
-    fireRate?: number
-    maxHp?: number
-    pickup?: number
-    speed?: number
-    pierce?: number
-    expGain?: number
-  }
+  bonuses?: Partial<Record<AttachmentBonusKey, number>>
 }
 
 export const starterWeapon = {
@@ -43,7 +50,7 @@ export const starterAttachments: Attachment[] = [
 
 export const inventoryPreview: Attachment[] = [
   { name: '燃烧弹芯', slot: '弹芯', rarity: '稀有', effect: '伤害 +10%', bonuses: { damage: 0.1 } },
-  { name: '吸血模块', slot: '模块', rarity: '稀有', effect: '最大生命 +18', bonuses: { maxHp: 18 } },
+  { name: '生命模块', slot: '模块', rarity: '稀有', effect: '最大生命 +18', bonuses: { maxHp: 18 } },
   { name: '红点瞄具', slot: '瞄具', rarity: '精良', effect: '射速 +6%', bonuses: { fireRate: 0.06 } },
   { name: '稳定枪托', slot: '枪托', rarity: '精良', effect: '移速 +7%', bonuses: { speed: 0.07 } }
 ]

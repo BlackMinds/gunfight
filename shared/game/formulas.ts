@@ -1,4 +1,4 @@
-export type EnemyKind = 'grunt' | 'fast' | 'heavy' | 'bomber'
+export type EnemyKind = 'grunt' | 'ranged' | 'fast' | 'heavy' | 'bomber'
 
 const stageNames = [
   { max: 50, name: '训练区', pressure: '基础暴徒' },
@@ -15,6 +15,7 @@ const stageNames = [
 
 const baseEnemy = {
   grunt: { label: '暴徒', hp: 38, damage: 7, speed: 74, hpRate: 1, damageRate: 1, speedRate: 1 },
+  ranged: { label: '火力手', hp: 30, damage: 6, speed: 66, hpRate: 0.82, damageRate: 0.92, speedRate: 0.92 },
   fast: { label: '迅捷兵', hp: 24, damage: 5, speed: 118, hpRate: 0.72, damageRate: 0.82, speedRate: 1.42 },
   heavy: { label: '重装兵', hp: 92, damage: 12, speed: 48, hpRate: 1.75, damageRate: 1.34, speedRate: 0.72 },
   bomber: { label: '爆破兵', hp: 32, damage: 18, speed: 86, hpRate: 0.9, damageRate: 1.6, speedRate: 1.08 }
