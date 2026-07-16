@@ -5,7 +5,7 @@
         <b>{{ resources.gold }}</b>
       </div>
       <button type="button" disabled title="设置功能开发中">⚙ 设置</button>
-      <button type="button" @click="returnToBase">⇥ 退出</button>
+      <button type="button" data-testid="return-to-base" @click="returnToBase">⇥ 退出</button>
     </section>
 
     <aside class="hud hud-left">
@@ -27,6 +27,14 @@
         <div class="stat-row">
           <span>攻击力</span>
           <b>{{ damagePreview }}</b>
+        </div>
+        <div class="stat-row">
+          <span>主武器</span>
+          <b>{{ weapon.name }}</b>
+        </div>
+        <div class="stat-row">
+          <span>元素</span>
+          <b>{{ weapon.element }}</b>
         </div>
         <div class="stat-row">
           <span>生命值</span>
@@ -132,6 +140,6 @@ const {
   mode, resources, returnToBase, player, hpPercent, damagePreview, kills, targetKills,
   nextLevelExp, runStats, currentWave, totalWaves, currentWaveDefinition, wavePlan,
   waveStatusText, bossHud, damageDirection, killNotice, elapsedSeconds, formatClock,
-  skills, useSkill, upgradeChoices, chooseUpgrade
+  skills, useSkill, upgradeChoices, chooseUpgrade, weapon
 } = useGameCanvasContext()
 </script>

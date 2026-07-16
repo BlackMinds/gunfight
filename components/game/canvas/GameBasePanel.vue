@@ -85,6 +85,8 @@
         </div>
       </div>
 
+      <GameProgressionPanel />
+
       <div class="base-backpack" :class="{ 'sale-mode': isSaleMode }">
         <div class="base-backpack-head">
           <div>
@@ -230,6 +232,7 @@
 </template>
 
 <script setup lang="ts">
+import GameProgressionPanel from './GameProgressionPanel.vue'
 import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
 
 const {

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { CURRENT_SAVE_VERSION, emptyLegacyBase, migrateAttachmentIdentity } from '../../shared/game/save'
 
 describe('存档迁移', () => {
-  it('R2 收藏字段使用版本 5 存档', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(5)
+  it('长线系统首版使用版本 6 存档', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(6)
   })
 
   it('清除已删除基地强化产生的隐藏战力', () => {

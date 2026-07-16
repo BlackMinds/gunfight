@@ -3074,6 +3074,191 @@
   }
 }
 
+.game-screen .progression-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(119, 183, 215, 0.22);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(18, 25, 28, 0.9), rgba(10, 13, 14, 0.94));
+}
+
+.game-screen .progression-head,
+.game-screen .progression-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.game-screen .progression-head h2,
+.game-screen .progression-head p {
+  margin: 0;
+}
+
+.game-screen .progression-head h2 {
+  font-size: 20px;
+}
+
+.game-screen .progression-head > span,
+.game-screen .progression-title span,
+.game-screen .progression-section p,
+.game-screen .cloud-state span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.game-screen .progression-section {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(125, 139, 146, 0.2);
+  border-radius: 8px;
+  background: rgba(7, 10, 11, 0.48);
+}
+
+.game-screen .progression-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 10px;
+}
+
+.game-screen .weapon-catalog,
+.game-screen .talent-grid,
+.game-screen .set-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.game-screen .weapon-catalog button,
+.game-screen .talent-grid button {
+  min-width: 0;
+  min-height: 92px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+
+.game-screen .weapon-catalog button.equipped {
+  border-color: rgba(240, 191, 87, 0.82);
+  background: linear-gradient(180deg, rgba(240, 191, 87, 0.2), rgba(47, 31, 14, 0.2));
+}
+
+.game-screen .weapon-catalog small,
+.game-screen .talent-grid small {
+  color: #8fcbe7;
+}
+
+.game-screen .weapon-catalog span,
+.game-screen .weapon-catalog em,
+.game-screen .talent-grid span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+}
+
+.game-screen .talent-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.game-screen .talent-grid button {
+  min-height: 76px;
+  word-break: normal;
+}
+
+.game-screen .set-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.game-screen .set-grid article,
+.game-screen .task-list article,
+.game-screen .cloud-state {
+  padding: 9px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(125, 139, 146, 0.18);
+  border-radius: 6px;
+  background: rgba(35, 42, 45, 0.52);
+}
+
+.game-screen .set-grid article.active {
+  border-color: rgba(240, 191, 87, 0.56);
+}
+
+.game-screen .set-grid span,
+.game-screen .task-list small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.game-screen .task-list {
+  display: grid;
+  gap: 6px;
+}
+
+.game-screen .task-list article {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.game-screen .task-list article > div,
+.game-screen .task-list small {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.game-screen .task-list button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.game-screen .offline-section > button {
+  min-height: 42px;
+  border-color: rgba(255, 224, 139, 0.64);
+  color: #191006;
+  background: linear-gradient(180deg, #ffe08b, #f0bf57 52%, #b66f45);
+}
+
+.game-screen .inventory-icon-item.rarity-传说,
+.game-screen .loot-card.rarity-传说 {
+  border-color: rgba(245, 145, 53, 0.9);
+  box-shadow: inset 0 0 18px rgba(245, 145, 53, 0.16);
+}
+
+.game-screen .inventory-icon-item.rarity-神话,
+.game-screen .loot-card.rarity-神话 {
+  border-color: rgba(225, 63, 70, 0.92);
+  box-shadow: inset 0 0 22px rgba(225, 63, 70, 0.2), 0 0 12px rgba(225, 63, 70, 0.12);
+}
+
+@media (max-width: 900px) {
+  .game-screen .progression-grid,
+  .game-screen .weapon-catalog,
+  .game-screen .talent-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .game-screen .progression-head,
+  .game-screen .progression-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .game-screen .progression-grid,
+  .game-screen .weapon-catalog,
+  .game-screen .talent-grid,
+  .game-screen .set-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* 基地界面统一可读字号，避免旧的 10–11px 局部样式继续生效。 */
 @media (min-width: 901px) {
   .game-screen.mode-base .base-panel,

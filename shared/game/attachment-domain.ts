@@ -48,11 +48,11 @@ export function normalizeBonus(key: AttachmentBonusKey, value: number) {
 }
 
 export function attachmentRarityScale(rarity: AttachmentRarity) {
-  return [0.78, 1, 1.28, 1.68][Math.max(0, attachmentRarities.indexOf(rarity))] ?? 1
+  return [0.78, 1, 1.28, 1.68, 2.15, 2.75][Math.max(0, attachmentRarities.indexOf(rarity))] ?? 1
 }
 
 function subAffixCountFor(rarity: AttachmentRarity) {
-  return [1, 2, 3, 4][Math.max(0, attachmentRarities.indexOf(rarity))] ?? 1
+  return [1, 2, 3, 4, 5, 6][Math.max(0, attachmentRarities.indexOf(rarity))] ?? 1
 }
 
 export function createAffix(key: AttachmentBonusKey, value: number, tier: AttachmentAffix['tier']): AttachmentAffix {
@@ -198,7 +198,7 @@ export function attachmentRarityRank(item: Pick<Attachment, 'rarity'>) {
 }
 
 export function attachmentMaxLevel(item: Attachment) {
-  return [3, 5, 7, 10][attachmentRarityRank(item)] ?? 3
+  return [3, 5, 7, 10, 15, 20][attachmentRarityRank(item)] ?? 3
 }
 
 export function attachmentUpgradeCost(item: Attachment) {
