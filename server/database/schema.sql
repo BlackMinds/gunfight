@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS gunfight_users (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS gunfight_cloud_saves (
+  user_id TEXT PRIMARY KEY REFERENCES gunfight_users(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL DEFAULT 1,
+  payload JSONB NOT NULL,
+  saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

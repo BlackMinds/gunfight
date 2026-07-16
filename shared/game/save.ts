@@ -1,6 +1,6 @@
 import type { Attachment } from './weapons'
 
-export const CURRENT_SAVE_VERSION = 6
+export const CURRENT_SAVE_VERSION = 7
 
 export const emptyLegacyBase = () => ({ weaponLevel: 0, armorLevel: 0, magnetLevel: 0 })
 

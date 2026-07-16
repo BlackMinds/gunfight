@@ -37,6 +37,10 @@
           <b>{{ weapon.element }}</b>
         </div>
         <div class="stat-row">
+          <span>弹匣</span>
+          <b>{{ weaponReloadTimer > 0 ? `换弹 ${weaponReloadTimer.toFixed(1)}s` : `${weaponAmmo} / ${weapon.magazineSize}` }}</b>
+        </div>
+        <div class="stat-row">
           <span>生命值</span>
           <b>{{ Math.ceil(player.hp) }} / {{ player.maxHp }}</b>
         </div>
@@ -140,6 +144,6 @@ const {
   mode, resources, returnToBase, player, hpPercent, damagePreview, kills, targetKills,
   nextLevelExp, runStats, currentWave, totalWaves, currentWaveDefinition, wavePlan,
   waveStatusText, bossHud, damageDirection, killNotice, elapsedSeconds, formatClock,
-  skills, useSkill, upgradeChoices, chooseUpgrade, weapon
+  skills, useSkill, upgradeChoices, chooseUpgrade, weapon, weaponAmmo, weaponReloadTimer
 } = useGameCanvasContext()
 </script>

@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useCloudSave } from './useCloudSave'
 import battlefieldUrl from '~/assets/images/generated/battlefield.png'
 import bulletUrl from '~/assets/images/generated/bullet.png'
 import enemyBomberUrl from '~/assets/images/generated/enemy-bomber.png'
@@ -39,27 +40,39 @@ import { countWaveEnemies, createWavePlan, enemyKindForWave, levelTuning, resolv
 import { buildStrategyInsights, dpsGapPercent, durationVerdict, type AttachmentContribution, type WaveRunRecord } from '~/shared/game/telemetry'
 import {
   applyElementStatus,
+  canUpgradeTalent,
   calculateOfflineReward,
   combinedSetBonuses,
+  createAchievements,
   createDailyTasks,
+  createWeeklyTasks,
   dailyTaskKey,
+  emptyDropPity,
   emptyEnemyStatus,
   emptyTalentLevels,
+  guaranteedDropRarity,
+  normalizeAchievements,
   normalizeDailyTasks,
+  normalizeDropPity,
   normalizeTalentLevels,
+  normalizeWeeklyTasks,
+  rarityRank,
+  recordPityDrop,
   recordTaskEvent,
   summarizeSets,
   talentBonuses,
   talentNodes,
   talentPointBudget,
   tickEnemyStatus,
-  type DailyTask,
+  weeklyTaskKey,
+  type DropPityState,
   type EnemyStatusState,
+  type GameTask,
   type OfflineReward,
-  type TalentId,
+  type TalentNodeId,
   type TalentLevels
 } from '~/shared/game/long-term'
-import { attachmentPool, attachmentRarities, attachmentSlots, starterAttachments, starterWeapon, weaponCatalog, type Attachment, type AttachmentAffix, type AttachmentBonusKey, type AttachmentRarity, type AttachmentSlot, type WeaponDefinition, type WeaponElement } from '~/shared/game/weapons'
+import { applyWeaponProgress, attachmentPool, attachmentRarities, attachmentSlots, emptyWeaponProgress, normalizeWeaponProgress, starterAttachments, starterWeapon, weaponCatalog, weaponStarCost, weaponUpgradeCost, type Attachment, type AttachmentAffix, type AttachmentBonusKey, type AttachmentRarity, type AttachmentSlot, type WeaponDefinition, type WeaponElement, type WeaponProgressMap } from '~/shared/game/weapons'
 
 type Vec = { x: number; y: number }
 type Enemy = Vec & {
@@ -90,7 +103,7 @@ type Enemy = Vec & {
   bossPhase: number
   statuses: EnemyStatusState
 }
-type Bullet = Vec & { vx: number; vy: number; damage: number; life: number; pierce: number; critical: boolean; element: WeaponElement; statusChance: number; hitEnemyIds: Set<number> }
+type Bullet = Vec & { vx: number; vy: number; damage: number; life: number; pierce: number; critical: boolean; element: WeaponElement; statusChance: number; explosionRadius: number; chainCount: number; knockback: number; hitEnemyIds: Set<number> }
 type EnemyProjectile = Vec & { vx: number; vy: number; damage: number; life: number; radius: number; sourceKind: EnemyKind | 'boss' }
 type Drop = Vec & { value: number; radius: number; kind: 'gold' | 'exp' }
 type Afterimage = Vec & { angle: number; life: number; maxLife: number; size: number }
@@ -138,9 +151,14 @@ type SaveData = {
   inventory: Array<string | Attachment>
   acquireOrder?: Record<string, number>
   selectedWeaponKey?: string
+  weaponProgress?: Partial<WeaponProgressMap>
   talents?: Partial<TalentLevels>
-  daily?: { key: string; tasks: DailyTask[] }
+  daily?: { key: string; tasks: GameTask[] }
+  weekly?: { key: string; tasks: GameTask[] }
+  achievements?: GameTask[]
+  dropPity?: Partial<DropPityState>
   lastSeenAt?: number
+  savedAt?: number
 }
 
 type R3ReplayBatchOptions = { speed?: number; baseSeed?: number }
@@ -240,7 +258,13 @@ const player = reactive({
   level: 1,
   exp: 0
 })
-const modifiers = reactive({ damage: 1, fireRate: 1, speed: 1, pickup: 70, pierceBonus: 0, expGain: 1, critRate: 0, statusPower: 1, goldGain: 1, offlineGain: 1 })
+const modifiers = reactive({
+  damage: 1, fireRate: 1, speed: 1, pickup: 70, pierceBonus: 0, expGain: 1, critRate: 0,
+  statusPower: 1, statusChance: 0, statusDuration: 1, goldGain: 1, offlineGain: 1,
+  offlineCapHours: 8, dropRate: 0, damageReduction: 0, healthRegen: 0, lifesteal: 0,
+  dodge: 0, cooldownReduction: 0, eliteDamage: 0, extraChains: 0, noPierceFalloff: false,
+  burnExplosion: false, lowHealthLifesteal: false, doubleRewardChance: 0, eliteKillBuff: false
+})
 const skills = reactive([
   { key: 'dash' as SkillKey, shortcut: '1', name: '战术冲刺', hint: '瞬间拉开', cooldown: 0, icon: skillDashUrl },
   { key: 'overload' as SkillKey, shortcut: '2', name: '过载火力', hint: '短时射速', cooldown: 0, icon: skillOverloadUrl },
@@ -262,12 +286,18 @@ const assetUrls = {
 const sprites: Partial<Record<keyof typeof assetUrls, HTMLImageElement>> = {}
 const selectedWeaponKey = ref(starterWeapon.key)
 const weapon = reactive<WeaponDefinition>({ ...starterWeapon, traits: [...starterWeapon.traits] })
+const weaponProgress = reactive<WeaponProgressMap>(emptyWeaponProgress())
+const weaponAmmo = ref(starterWeapon.magazineSize)
+const weaponReloadTimer = ref(0)
 const talentLevels = reactive<TalentLevels>(emptyTalentLevels())
 const dailyKey = ref(dailyTaskKey())
-const dailyTasks = ref<DailyTask[]>(createDailyTasks())
+const dailyTasks = ref<GameTask[]>(createDailyTasks())
+const weeklyKey = ref(weeklyTaskKey())
+const weeklyTasks = ref<GameTask[]>(createWeeklyTasks())
+const achievements = ref<GameTask[]>(createAchievements())
+const dropPity = reactive<DropPityState>(emptyDropPity())
 const pendingOfflineReward = ref<OfflineReward | null>(null)
 const lastSeenAt = ref(Date.now())
-const cloudSyncState = reactive({ status: 'local-only' as 'local-only' | 'ready', label: '本地存档', detail: '账号与数据库尚未配置，已保留云同步数据边界。' })
 const attachmentByName = new Map(attachmentPool.map((item) => [item.name, item]))
 let attachmentInstanceCursor = 0
 const equippedParts = reactive<Attachment[]>([])
@@ -298,6 +328,11 @@ let spawnTimer = 0
 const stageTimer = ref(0)
 let overloadTimer = 0
 let dashTimer = 0
+let eliteSetBuffTimer = 0
+let dualMoveBuffTimer = 0
+let sustainedFireStacks = 0
+let lastLockedTargetId = 0
+let lockedTargetHits = 0
 let playerHitFlash = 0
 let screenShake = 0
 let bossSpawned = false
@@ -345,12 +380,12 @@ const elapsedSeconds = computed(() => Math.floor(stageTimer.value))
 const damagePreview = computed(() => Math.round(weapon.damage * modifiers.damage))
 const fireRatePreview = computed(() => (weapon.fireRate * modifiers.fireRate).toFixed(1))
 const moveSpeedPreview = computed(() => Math.round(player.speed * modifiers.speed))
-const critRatePreview = computed(() => Math.round(modifiers.critRate * 100))
+const critRatePreview = computed(() => Math.round(Math.min(0.9, modifiers.critRate + weapon.critRate) * 100))
 const expGainPreview = computed(() => Math.round(modifiers.expGain * 100))
 const expGainBonusPreview = computed(() => Math.round((modifiers.expGain - 1) * 100))
 const totalPiercePreview = computed(() => weapon.pierce + modifiers.pierceBonus)
-const damageReductionPreview = computed(() => 0)
-const expectedDpsPreview = computed(() => Math.round(Number(damagePreview.value) * Number(fireRatePreview.value) * (1 + modifiers.critRate * 0.75)))
+const damageReductionPreview = computed(() => Math.round(modifiers.damageReduction * 100))
+const expectedDpsPreview = computed(() => Math.round(Number(damagePreview.value) * Number(fireRatePreview.value) * weapon.projectiles * (1 + Math.min(0.9, modifiers.critRate + weapon.critRate) * (weapon.critDamage - 1))))
 const combatPower = computed(() => {
   const offense = weapon.damage * modifiers.damage * weapon.fireRate * modifiers.fireRate * (1 + modifiers.critRate * 0.55) * (1 + (weapon.pierce + modifiers.pierceBonus) * 0.18)
   const survival = player.maxHp
@@ -362,7 +397,7 @@ const characterStats = computed<CharacterStat[]>(() => [
   { key: 'fireRate', label: '攻击频率', value: `${fireRatePreview.value}/秒`, hint: '每秒发射的子弹数量。', tone: 'offense' },
   { key: 'pierce', label: '子弹穿透', value: totalPiercePreview.value, hint: '一颗子弹可额外穿过的敌人数量。', tone: 'offense' },
   { key: 'critRate', label: '暴击率', value: `${critRatePreview.value}%`, hint: '每次命中触发暴击的概率。', tone: 'offense' },
-  { key: 'critDamage', label: '暴击伤害', value: '175%', hint: '暴击命中造成的固定伤害倍率。', tone: 'offense' },
+  { key: 'critDamage', label: '暴击伤害', value: `${Math.round(weapon.critDamage * 100)}%`, hint: '当前武器的暴击伤害倍率。', tone: 'offense' },
   { key: 'health', label: '生命', value: `${Math.ceil(player.hp)}/${player.maxHp}`, hint: '当前生命与最大生命。', tone: 'survival' },
   { key: 'reduction', label: '接触减伤', value: `${damageReductionPreview.value}%`, hint: '当前构筑提供的敌人接触伤害减免。', tone: 'survival' },
   { key: 'speed', label: '移动速度', value: moveSpeedPreview.value, hint: '角色每秒移动距离。', tone: 'mobility' },
@@ -370,13 +405,18 @@ const characterStats = computed<CharacterStat[]>(() => [
   { key: 'range', label: '武器射程', value: weapon.range, hint: '子弹的最大有效飞行距离。', tone: 'mobility' },
   { key: 'expGain', label: '经验获取', value: `${expGainBonusPreview.value >= 0 ? '+' : ''}${expGainBonusPreview.value}%`, hint: `当前经验收益倍率为 ${expGainPreview.value}%。`, tone: 'growth' }
 ])
-const weaponOptions = computed(() => weaponCatalog.map((item) => ({ ...item, unlocked: player.level >= item.unlockLevel, equipped: item.key === selectedWeaponKey.value })))
+const weaponOptions = computed(() => weaponCatalog.map((item) => ({ ...applyWeaponProgress(item, weaponProgress[item.key]), progress: weaponProgress[item.key], unlocked: player.level >= item.unlockLevel, equipped: item.key === selectedWeaponKey.value })))
+const currentWeaponProgress = computed(() => weaponProgress[selectedWeaponKey.value])
+const currentWeaponUpgradeCost = computed(() => weaponUpgradeCost(currentWeaponProgress.value))
+const currentWeaponStarCost = computed(() => weaponStarCost(currentWeaponProgress.value))
 const talentPointsTotal = computed(() => talentPointBudget(player.level, highestCleared.value))
 const talentPointsSpent = computed(() => Object.values(talentLevels).reduce((sum, level) => sum + level, 0))
 const talentPointsAvailable = computed(() => Math.max(0, talentPointsTotal.value - talentPointsSpent.value))
-const talentCards = computed(() => talentNodes.map((node) => ({ ...node, level: talentLevels[node.id], canUpgrade: talentPointsAvailable.value > 0 && talentLevels[node.id] < node.maxLevel })))
+const talentCards = computed(() => talentNodes.map((node) => ({ ...node, level: talentLevels[node.id], canUpgrade: talentPointsAvailable.value > 0 && canUpgradeTalent(node, talentLevels), requirementMet: !node.requires || talentLevels[node.requires.id] >= node.requires.level })))
 const setProgress = computed(() => summarizeSets(equippedParts))
 const completedDailyTasks = computed(() => dailyTasks.value.filter((task) => task.progress >= task.target).length)
+const completedWeeklyTasks = computed(() => weeklyTasks.value.filter((task) => task.progress >= task.target).length)
+const completedAchievements = computed(() => achievements.value.filter((task) => task.progress >= task.target).length)
 const stageType = computed(() => getStageTypeLabel(stage.value))
 const nextEnemyPreview = computed(() => getEnemyPreview(stage.value))
 const inventoryCapacityLabel = computed(() => `${inventory.value.length} / ${BASE_INVENTORY_CAPACITY}`)
@@ -506,15 +546,46 @@ const postBattleChoices = computed<PostBattleChoice[]>(() => [
 function equipWeapon(next: WeaponDefinition) {
   if (mode.value === 'battle' || player.level < next.unlockLevel || next.key === selectedWeaponKey.value) return
   selectedWeaponKey.value = next.key
-  Object.assign(weapon, { ...next, traits: [...next.traits] })
+  const progressed = applyWeaponProgress(next, weaponProgress[next.key])
+  Object.assign(weapon, progressed)
+  weaponAmmo.value = weapon.magazineSize
+  weaponReloadTimer.value = 0
   applyBaseStats()
   bannerText.value = `主武器已切换为 ${next.name}`
   saveGame()
 }
 
-function upgradeTalent(id: TalentId) {
+function upgradeCurrentWeapon() {
+  if (mode.value === 'battle') return
+  const progress = currentWeaponProgress.value
+  const cost = currentWeaponUpgradeCost.value
+  if (progress.level >= weapon.maxLevel || resources.gold < cost.gold || resources.parts < cost.parts) return
+  resources.gold -= cost.gold
+  resources.parts -= cost.parts
+  progress.level += 1
+  Object.assign(weapon, applyWeaponProgress(weaponCatalog.find((item) => item.key === selectedWeaponKey.value) ?? starterWeapon, progress))
+  recordAllTaskEvents('upgrade')
+  bannerText.value = `${weapon.name} 已强化至 Lv.${progress.level}`
+  saveGame()
+}
+
+function starCurrentWeapon() {
+  if (mode.value === 'battle') return
+  const progress = currentWeaponProgress.value
+  const cost = currentWeaponStarCost.value
+  if (progress.stars >= weapon.maxStars || resources.alloy < cost.alloy || resources.parts < cost.parts) return
+  resources.alloy -= cost.alloy
+  resources.parts -= cost.parts
+  progress.stars += 1
+  Object.assign(weapon, applyWeaponProgress(weaponCatalog.find((item) => item.key === selectedWeaponKey.value) ?? starterWeapon, progress))
+  recordAllTaskEvents('upgrade')
+  bannerText.value = `${weapon.name} 已提升至 ${progress.stars} 星`
+  saveGame()
+}
+
+function upgradeTalent(id: TalentNodeId) {
   const node = talentNodes.find((item) => item.id === id)
-  if (!node || talentPointsAvailable.value <= 0 || talentLevels[id] >= node.maxLevel || mode.value === 'battle') return
+  if (!node || talentPointsAvailable.value <= 0 || !canUpgradeTalent(node, talentLevels) || mode.value === 'battle') return
   talentLevels[id] += 1
   applyBaseStats()
   bannerText.value = `${node.branch}天赋「${node.name}」提升至 ${talentLevels[id]} 级`
@@ -525,6 +596,7 @@ function claimOfflineReward() {
   const reward = pendingOfflineReward.value
   if (!reward || reward.cappedSeconds < 60) return
   resources.gold += reward.gold
+  resources.alloy += reward.alloy
   resources.parts += reward.parts
   grantExp(reward.exp)
   pendingOfflineReward.value = null
@@ -533,8 +605,9 @@ function claimOfflineReward() {
   saveGame()
 }
 
-function claimDailyTask(task: DailyTask) {
-  const current = dailyTasks.value.find((item) => item.id === task.id)
+function claimTask(task: GameTask) {
+  const source = task.period === 'daily' ? dailyTasks.value : task.period === 'weekly' ? weeklyTasks.value : achievements.value
+  const current = source.find((item) => item.id === task.id)
   if (!current || current.claimed || current.progress < current.target) return
   current.claimed = true
   resources.gold += current.reward.gold
@@ -542,6 +615,14 @@ function claimDailyTask(task: DailyTask) {
   resources.parts += current.reward.parts
   bannerText.value = `任务完成：${current.label}`
   saveGame()
+}
+
+const claimDailyTask = claimTask
+
+function recordAllTaskEvents(event: GameTask['event'], amount = 1) {
+  recordTaskEvent(dailyTasks.value, event, amount)
+  recordTaskEvent(weeklyTasks.value, event, amount)
+  recordTaskEvent(achievements.value, event, amount)
 }
 
 function getAttachmentDropProfile(level: number) {
@@ -917,6 +998,7 @@ function upgradeSelectedAttachment() {
   item.mainAffix.value = normalizeBonus(item.mainAffix.key, item.mainAffix.value * 1.08)
   rebuildAttachmentBonuses(item)
   applyBaseStats()
+  recordAllTaskEvents('upgrade')
   bannerText.value = `${item.name} 强化至 +${item.level}`
   saveGame()
 }
@@ -932,7 +1014,7 @@ function reforgeSelectedAttachment() {
   item.subAffixes = rollSubAffixes(item.rarity, item.mainAffix.key, gameplayRandom, lockedAffix)
   rebuildAttachmentBonuses(item)
   applyBaseStats()
-  recordTaskEvent(dailyTasks.value, 'reforge')
+  recordAllTaskEvents('reforge')
   bannerText.value = lockedAffix ? `${item.name} 已保留「${lockedAffix.label}」并完成重铸` : `${item.name} 副词条已重铸`
   saveGame()
 }
@@ -968,24 +1050,38 @@ function applyBaseStats() {
   const gear = getEquippedBonuses()
   const talents = talentBonuses(talentLevels)
   const sets = combinedSetBonuses(equippedParts)
-  player.maxHp = 120 + (player.level - 1) * 12 + gear.maxHp + talents.maxHp
+  player.maxHp = 120 + (player.level - 1) * 12 + gear.maxHp + talents.maxHp + sets.maxHp
   player.hp = Math.min(player.maxHp, player.hp)
   modifiers.damage = 1 + gear.damage + talents.damage + sets.damage
-  modifiers.fireRate = 1 + gear.fireRate + sets.fireRate
-  modifiers.speed = 1 + gear.speed
-  modifiers.speed += talents.speed
-  modifiers.pickup = 70 + gear.pickup
-  modifiers.pierceBonus = gear.pierce + sets.pierce
-  modifiers.expGain = 1 + gear.expGain
-  modifiers.critRate = Math.min(0.65, gear.critRate)
+  modifiers.fireRate = 1 + gear.fireRate + talents.fireRate + sets.fireRate
+  modifiers.speed = 1 + gear.speed + talents.speed
+  modifiers.pickup = 70 + gear.pickup + talents.pickup
+  modifiers.pierceBonus = gear.pierce + talents.pierce + sets.pierce
+  modifiers.expGain = 1 + gear.expGain + talents.expGain
+  modifiers.critRate = Math.min(0.75, gear.critRate + talents.critRate)
   modifiers.statusPower = 1 + talents.statusPower + sets.statusPower
+  modifiers.statusChance = talents.statusChance
+  modifiers.statusDuration = 1 + talents.statusDuration
   modifiers.goldGain = 1 + talents.goldGain + sets.goldGain
   modifiers.offlineGain = 1 + talents.offlineGain
+  modifiers.offlineCapHours = 8 + talents.offlineCapHours
+  modifiers.dropRate = talents.dropRate
+  modifiers.damageReduction = Math.min(0.7, talents.damageReduction)
+  modifiers.healthRegen = talents.healthRegen
+  modifiers.lifesteal = talents.lifesteal + sets.lifesteal
+  modifiers.dodge = Math.min(0.65, talents.dodge)
+  modifiers.cooldownReduction = Math.min(0.6, talents.cooldownReduction)
+  modifiers.eliteDamage = sets.eliteDamage
+  modifiers.extraChains = sets.extraChains
+  modifiers.noPierceFalloff = sets.noPierceFalloff
+  modifiers.burnExplosion = sets.burnExplosion
+  modifiers.lowHealthLifesteal = sets.lowHealthLifesteal
+  modifiers.doubleRewardChance = sets.doubleRewardChance
+  modifiers.eliteKillBuff = sets.eliteKillBuff
 }
 
-function saveGame() {
-  if (!canPersist || replayPersistenceSuppressed) return
-  const payload = {
+function buildSavePayload(): SaveData {
+  return {
     saveVersion: CURRENT_SAVE_VERSION,
     stage: stage.value,
     highestCleared: highestCleared.value,
@@ -996,11 +1092,22 @@ function saveGame() {
     inventory: inventory.value.map((item) => ({ ...item })),
     acquireOrder: { ...attachmentAcquireOrder },
     selectedWeaponKey: selectedWeaponKey.value,
+    weaponProgress: Object.fromEntries(Object.entries(weaponProgress).map(([key, value]) => [key, { ...value }])),
     talents: { ...talentLevels },
     daily: { key: dailyKey.value, tasks: dailyTasks.value.map((task) => ({ ...task, reward: { ...task.reward } })) },
-    lastSeenAt: Date.now()
+    weekly: { key: weeklyKey.value, tasks: weeklyTasks.value.map((task) => ({ ...task, reward: { ...task.reward } })) },
+    achievements: achievements.value.map((task) => ({ ...task, reward: { ...task.reward } })),
+    dropPity: { ...dropPity },
+    lastSeenAt: Date.now(),
+    savedAt: Date.now()
   }
+}
+
+function saveGame() {
+  if (!canPersist || replayPersistenceSuppressed) return
+  const payload = buildSavePayload()
   localStorage.setItem(SAVE_KEY, JSON.stringify(payload))
+  cloud.queueSync(payload)
 }
 
 function applySaveData(saved: Partial<SaveData>) {
@@ -1012,15 +1119,24 @@ function applySaveData(saved: Partial<SaveData>) {
   player.level = Math.max(1, Number(saved.player?.level) || 1)
   player.exp = Math.max(0, Number(saved.player?.exp) || 0)
   player.hp = Math.max(1, Number(saved.player?.hp) || player.hp)
+  Object.assign(weaponProgress, normalizeWeaponProgress(saved.weaponProgress))
   Object.assign(talentLevels, normalizeTalentLevels(saved.talents))
   const savedWeapon = weaponCatalog.find((item) => item.key === saved.selectedWeaponKey && player.level >= item.unlockLevel) ?? starterWeapon
   selectedWeaponKey.value = savedWeapon.key
-  Object.assign(weapon, { ...savedWeapon, traits: [...savedWeapon.traits] })
+  Object.assign(weapon, applyWeaponProgress(savedWeapon, weaponProgress[savedWeapon.key]))
+  weaponAmmo.value = weapon.magazineSize
+  weaponReloadTimer.value = 0
   const today = dailyTaskKey()
   dailyKey.value = today
   dailyTasks.value = saved.daily?.key === today ? normalizeDailyTasks(saved.daily.tasks) : createDailyTasks()
+  const thisWeek = weeklyTaskKey()
+  weeklyKey.value = thisWeek
+  weeklyTasks.value = saved.weekly?.key === thisWeek ? normalizeWeeklyTasks(saved.weekly.tasks) : createWeeklyTasks()
+  achievements.value = normalizeAchievements(saved.achievements)
+  Object.assign(dropPity, normalizeDropPity(saved.dropPity))
   if (!replayRuntime.running && saved.lastSeenAt) {
-    const reward = calculateOfflineReward(saved.lastSeenAt, Date.now(), highestCleared.value, 1 + talentBonuses(talentLevels).offlineGain)
+    const bonuses = talentBonuses(talentLevels)
+    const reward = calculateOfflineReward(saved.lastSeenAt, Date.now(), highestCleared.value, 1 + bonuses.offlineGain, 8 + bonuses.offlineCapHours)
     pendingOfflineReward.value = reward.cappedSeconds >= 60 ? reward : null
   }
   lastSeenAt.value = Date.now()
@@ -1045,6 +1161,26 @@ function loadGame() {
     localStorage.removeItem(SAVE_KEY)
   }
 }
+
+const cloud = useCloudSave<SaveData>({
+  getLocal: buildSavePayload,
+  applyRemote: (payload) => {
+    applySaveData(payload)
+    localStorage.setItem(SAVE_KEY, JSON.stringify(payload))
+    applyBaseStats()
+  }
+})
+const cloudSyncState = cloud.state
+const cloudUsername = cloud.username
+const cloudPassword = cloud.password
+const cloudHasSession = cloud.hasSession
+const cloudConflict = cloud.conflict
+const cloudLogin = cloud.login
+const cloudRegister = cloud.register
+const cloudLogout = cloud.logout
+const syncCloudSave = cloud.pullAndMerge
+const keepLocalCloudSave = cloud.keepLocalVersion
+const useRemoteCloudSave = cloud.useCloudVersion
 
 function selectAttachment(item: Attachment) {
   selectedAttachment.value = item
@@ -1093,6 +1229,7 @@ function equipAttachment(item: Attachment) {
   }
   selectedAttachment.value = inventory.value.find((part) => part.slot === item.slot) ?? null
   applyBaseStats()
+  recordAllTaskEvents('build', Math.max(0, ...summarizeSets(equippedParts).map((set) => set.count)))
   saveGame()
   return replaced
 }
@@ -1103,8 +1240,8 @@ function equipSettlementAttachment(item: Attachment) {
   bannerText.value = replaced ? `${item.name} 已装备，替换下 ${replaced.name}` : `${item.name} 已装备`
 }
 
-function rollAttachment(rarityWeights: Record<AttachmentRarity, number>) {
-  const desiredRarity = rollWeightedRarity(rarityWeights)
+function rollAttachment(rarityWeights: Record<AttachmentRarity, number>, guaranteedRarity?: AttachmentRarity | null) {
+  const desiredRarity = guaranteedRarity ?? rollWeightedRarity(rarityWeights)
   const rarityPool = attachmentPool.filter((item) => item.rarity === desiredRarity)
   const pool = rarityPool.length ? rarityPool : attachmentPool
   return createAttachmentInstance(pool[Math.floor(gameplayRandom() * pool.length)], 'drop', desiredRarity)
@@ -1131,12 +1268,13 @@ function applyInventoryCapacity(protectedItems: Attachment[] = []) {
   else if (resolved.overflow.length) bannerText.value = `背包已满，自动回收 ${resolved.overflow.length} 件配件`
 }
 
-function grantAttachmentDrops(count: number, rarityWeights: Record<AttachmentRarity, number>) {
+function grantAttachmentDrops(count: number, rarityWeights: Record<AttachmentRarity, number>, guaranteedRarity?: AttachmentRarity | null) {
   const drops: Attachment[] = []
   for (let i = 0; i < count; i++) {
-    const item = rollAttachment(rarityWeights)
+    const item = rollAttachment(rarityWeights, i === 0 ? guaranteedRarity : null)
     markAttachmentAcquired(item)
     drops.push(item)
+    if (rarityRank(item.rarity) >= rarityRank('史诗')) recordAllTaskEvents('rarity', Math.max(1, rarityRank(item.rarity) - rarityRank('稀有')))
   }
   inventory.value = [...drops, ...inventory.value]
   applyInventoryCapacity(drops)
@@ -1345,23 +1483,39 @@ function shootNearest() {
     if (enemy.boss && b < weapon.range) return enemy
     return b < a ? enemy : nearest
   })
+  if (weapon.attackPattern === 'beam') {
+    if (lastLockedTargetId === target.id) lockedTargetHits = Math.min(20, lockedTargetHits + 1)
+    else { lastLockedTargetId = target.id; lockedTargetHits = 1 }
+  } else {
+    lastLockedTargetId = 0
+    lockedTargetHits = 0
+  }
+  if (weapon.key === 'light-machine-gun') sustainedFireStacks = Math.min(20, sustainedFireStacks + 1)
+  else sustainedFireStacks = 0
   const angle = Math.atan2(target.y - player.y, target.x - player.x)
   const projectileMiddle = (weapon.projectiles - 1) / 2
   for (let projectile = 0; projectile < weapon.projectiles; projectile += 1) {
     const spreadOffset = weapon.projectiles > 1 ? (projectile - projectileMiddle) * (weapon.spread / Math.max(1, projectileMiddle)) : (gameplayRandom() - 0.5) * weapon.spread
     const finalAngle = angle + spreadOffset
-    const critical = gameplayRandom() < modifiers.critRate
+    const firstRoundBonus = weapon.key === 'pistol' && weaponAmmo.value === weapon.magazineSize ? weapon.critRate : 0
+    const bossCritBonus = weapon.key === 'frost-sniper' && target.boss ? 0.12 : 0
+    const critical = gameplayRandom() < Math.min(0.9, modifiers.critRate + weapon.critRate + firstRoundBonus + bossCritBonus)
+    const lockMultiplier = weapon.attackPattern === 'beam' ? 1 + lockedTargetHits * 0.025 : 1
+    const criticalMultiplier = critical ? weapon.critDamage + (weapon.key === 'frost-sniper' && target.boss ? 0.5 : 0) : 1
     bullets.push({
       x: player.x,
       y: player.y,
       vx: Math.cos(finalAngle) * weapon.bulletSpeed,
       vy: Math.sin(finalAngle) * weapon.bulletSpeed,
-      damage: weapon.damage * modifiers.damage * (critical ? 1.75 : 1),
+      damage: weapon.damage * modifiers.damage * criticalMultiplier * lockMultiplier,
       life: weapon.range / weapon.bulletSpeed,
       pierce: weapon.pierce + modifiers.pierceBonus,
       critical,
       element: weapon.element,
-      statusChance: weapon.statusChance,
+      statusChance: Math.min(0.95, weapon.statusChance + modifiers.statusChance),
+      explosionRadius: weapon.explosionRadius,
+      chainCount: weapon.chainCount + modifiers.extraChains,
+      knockback: weapon.knockback,
       hitEnemyIds: new Set<number>()
     })
   }
@@ -1391,25 +1545,32 @@ function recordDamage(amount: number) {
 function dealDamage(enemy: Enemy, rawDamage: number, critical = false, pierce = 0, element: WeaponElement = '物理', statusChance = 0) {
   let multiplier = 1
   const armoredHeavy = enemy.kind === 'heavy' && !enemy.boss && enemy.armor > 0
-  const multiplierWithoutPierce = armoredHeavy ? Math.min(1, 0.5 + (critical ? 0.12 : 0)) : enemy.boss ? 0.76 : 1
-  if (armoredHeavy) multiplier = Math.min(1, 0.5 + pierce * 0.13 + (critical ? 0.12 : 0))
+  const armorBreakScale = element === '能量' ? 0.35 : enemy.statuses.armorBreakSeconds > 0 ? 0.55 : 1
+  const multiplierWithoutPierce = armoredHeavy ? Math.min(1, 1 - 0.5 * armorBreakScale + (critical ? 0.12 : 0)) : enemy.boss ? 0.76 : 1
+  if (armoredHeavy) multiplier = Math.min(1, 1 - 0.5 * armorBreakScale + pierce * 0.13 + (critical ? 0.12 : 0))
   if (enemy.boss) multiplier = Math.min(1, 0.76 + pierce * 0.055)
   const hpBefore = enemy.hp
-  const statusDamageMultiplier = enemy.statuses.shockSeconds > 0 ? 1.12 : 1
-  const applied = Math.min(hpBefore, rawDamage * multiplier * statusDamageMultiplier)
+  const statusDamageMultiplier = (enemy.statuses.shockSeconds > 0 ? 1.12 : 1) * (enemy.statuses.vulnerableSeconds > 0 ? 1.18 : 1)
+  const eliteMultiplier = enemy.elite || enemy.boss ? 1 + modifiers.eliteDamage : 1
+  const setBuffMultiplier = eliteSetBuffTimer > 0 ? 1.25 : 1
+  const applied = Math.min(hpBefore, rawDamage * multiplier * statusDamageMultiplier * eliteMultiplier * setBuffMultiplier)
   if (armoredHeavy && pierce > 0) {
     runStats.heavyPierceDamage += Math.min(applied, Math.max(0, rawDamage * (multiplier - multiplierWithoutPierce)))
   }
   if (critical) {
     runStats.criticalTriggers += 1
-    const baseRawDamage = rawDamage / 1.75
+    const baseRawDamage = rawDamage / weapon.critDamage
     const nonCriticalMultiplier = armoredHeavy ? Math.min(1, 0.5 + pierce * 0.13) : multiplier
     const nonCriticalApplied = Math.min(hpBefore, baseRawDamage * nonCriticalMultiplier)
     runStats.criticalExtraDamage += Math.max(0, applied - nonCriticalApplied)
+    recordAllTaskEvents('critical', Math.round(applied))
   }
   enemy.hp -= applied
-  const appliedStatus = applyElementStatus(enemy.statuses, element, statusChance, rawDamage, modifiers.statusPower, gameplayRandom)
-  if (appliedStatus) hitTexts.push({ x: enemy.x, y: enemy.y - enemy.radius - 28, value: appliedStatus, life: 0.65, maxLife: 0.65, color: element === '火焰' ? '#f08a45' : element === '电击' ? '#79d9ff' : '#9ed7ee' })
+  const leechRate = modifiers.lifesteal * (modifiers.lowHealthLifesteal && player.hp / player.maxHp < 0.3 ? 2 : 1)
+  if (leechRate > 0) player.hp = Math.min(player.maxHp, player.hp + applied * leechRate)
+  const appliedStatus = applyElementStatus(enemy.statuses, element, statusChance, rawDamage, modifiers.statusPower, gameplayRandom, modifiers.statusDuration)
+  const statusColors: Record<WeaponElement, string> = { 物理: '#d8c8ad', 爆炸: '#ffb257', 火焰: '#f08a45', 电击: '#79d9ff', 毒素: '#91cf62', 冰霜: '#9ed7ee', 能量: '#c495ff' }
+  if (appliedStatus) hitTexts.push({ x: enemy.x, y: enemy.y - enemy.radius - 28, value: appliedStatus, life: 0.65, maxLife: 0.65, color: statusColors[element] })
   if (armoredHeavy) {
     enemy.armor = Math.max(0, enemy.armor - rawDamage * (0.35 + pierce * 0.25))
     if (enemy.armor <= 0) {
@@ -1420,6 +1581,28 @@ function dealDamage(enemy: Enemy, rawDamage: number, critical = false, pierce = 
   }
   recordDamage(applied)
   return applied
+}
+
+function triggerBulletSecondary(bullet: Bullet, primary: Enemy) {
+  if (bullet.explosionRadius > 0) {
+    for (const enemy of enemies) {
+      if (enemy.id === primary.id || Math.hypot(enemy.x - primary.x, enemy.y - primary.y) > bullet.explosionRadius) continue
+      dealDamage(enemy, bullet.damage * 0.68, false, bullet.pierce, bullet.element, bullet.statusChance * 0.7)
+    }
+  }
+  if (bullet.chainCount > 0) {
+    let source = primary
+    for (let chain = 0; chain < bullet.chainCount; chain += 1) {
+      const next = enemies
+        .filter((enemy) => !bullet.hitEnemyIds.has(enemy.id) && enemy.hp > 0 && Math.hypot(enemy.x - source.x, enemy.y - source.y) <= 190)
+        .sort((a, b) => Math.hypot(a.x - source.x, a.y - source.y) - Math.hypot(b.x - source.x, b.y - source.y))[0]
+      if (!next) break
+      bullet.hitEnemyIds.add(next.id)
+      dealDamage(next, bullet.damage * Math.pow(0.72, chain + 1), false, 0, '电击', bullet.statusChance)
+      hitTexts.push({ x: next.x, y: next.y - next.radius - 12, value: `连锁 ${chain + 1}`, life: 0.45, maxLife: 0.45, color: '#79d9ff' })
+      source = next
+    }
+  }
 }
 
 function updateDpsStats() {
@@ -1573,11 +1756,11 @@ function useSkill(key: SkillKey) {
     const input = inputVector()
     player.vx += input.x * 520
     player.vy += input.y * 520
-    skill.cooldown = 6
+    skill.cooldown = 6 * (1 - modifiers.cooldownReduction)
   }
   if (key === 'overload') {
     overloadTimer = 4
-    skill.cooldown = 12
+    skill.cooldown = 12 * (1 - modifiers.cooldownReduction)
   }
   if (key === 'pulse') {
     for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1588,7 +1771,7 @@ function useSkill(key: SkillKey) {
         if (enemy.hp <= 0) killEnemy(i)
       }
     }
-    skill.cooldown = 9
+    skill.cooldown = 9 * (1 - modifiers.cooldownReduction)
   }
 }
 
@@ -1596,7 +1779,16 @@ function killEnemy(index: number) {
   const enemy = enemies[index]
   if (!enemy) return
   kills.value += 1
-  recordTaskEvent(dailyTasks.value, 'kill')
+  recordAllTaskEvents('kill')
+  if (enemy.boss) recordAllTaskEvents('boss')
+  if (enemy.elite && modifiers.eliteKillBuff) eliteSetBuffTimer = 6
+  if (modifiers.burnExplosion && enemy.statuses.burnSeconds > 0) {
+    for (const nearby of enemies) {
+      if (nearby.id === enemy.id || Math.hypot(nearby.x - enemy.x, nearby.y - enemy.y) > 120) continue
+      dealDamage(nearby, enemy.maxHp * 0.08, false, 0, '火焰', 0.45)
+    }
+    hitTexts.push({ x: enemy.x, y: enemy.y, value: '爆燃', life: 0.6, maxLife: 0.6, color: '#f08a45', critical: true })
+  }
   grantExp(enemy.elite ? 7 : 3)
   drops.push({ x: enemy.x, y: enemy.y, value: enemy.elite ? 9 : 3, radius: 6, kind: 'gold' })
   if (enemy.elite) drops.push({ x: enemy.x + 10, y: enemy.y - 8, value: 5, radius: 5, kind: 'exp' })
@@ -1610,7 +1802,12 @@ function killEnemy(index: number) {
 
 function damagePlayer(rawDamage: number, sourceX: number, sourceY: number, sourceKind: EnemyKind | 'boss' = 'grunt') {
   if (player.invuln > 0) return
-  const damage = rawDamage
+  if (gameplayRandom() < modifiers.dodge) {
+    hitTexts.push({ x: player.x, y: player.y - 24, value: '闪避', life: 0.5, maxLife: 0.5, color: '#9ed7ee' })
+    player.invuln = 0.16
+    return
+  }
+  const damage = rawDamage * (1 - modifiers.damageReduction)
   player.hp -= damage
   runStats.hitCount += 1
   runStats.damageTaken += damage
@@ -1678,6 +1875,11 @@ function update(delta: number) {
   player.invuln = Math.max(0, player.invuln - delta)
   overloadTimer = Math.max(0, overloadTimer - delta)
   dashTimer = Math.max(0, dashTimer - delta)
+  eliteSetBuffTimer = Math.max(0, eliteSetBuffTimer - delta)
+  dualMoveBuffTimer = Math.max(0, dualMoveBuffTimer - delta)
+  weaponReloadTimer.value = Math.max(0, weaponReloadTimer.value - delta)
+  if (weaponReloadTimer.value <= 0 && weaponAmmo.value <= 0) weaponAmmo.value = weapon.magazineSize
+  if (modifiers.healthRegen > 0) player.hp = Math.min(player.maxHp, player.hp + modifiers.healthRegen * delta)
   damageDirection.life = Math.max(0, damageDirection.life - delta)
   killNoticeTimer = Math.max(0, killNoticeTimer - delta)
   if (killNoticeTimer <= 0) killNotice.value = ''
@@ -1698,7 +1900,7 @@ function update(delta: number) {
 
   const movement = inputVector()
   const moving = Math.hypot(movement.x, movement.y) > 0.1
-  const targetSpeed = player.speed * modifiers.speed * (dashTimer > 0 ? 2.2 : 1)
+  const targetSpeed = player.speed * modifiers.speed * (dashTimer > 0 ? 2.2 : 1) * (dualMoveBuffTimer > 0 ? 1.18 : 1)
   player.vx = lerp(player.vx, movement.x * targetSpeed, (moving ? 8.5 : 10.5) * delta)
   player.vy = lerp(player.vy, movement.y * targetSpeed, (moving ? 8.5 : 10.5) * delta)
   player.x = clamp(player.x + player.vx * delta, area.x + player.radius, area.x + area.width - player.radius)
@@ -1734,17 +1936,24 @@ function update(delta: number) {
     spawnTimer = resolvedSpawnInterval(stage.value, wave)
   }
 
-  if (player.fireTimer <= 0) {
+  if (player.fireTimer <= 0 && weaponReloadTimer.value <= 0 && weaponAmmo.value > 0) {
     shootNearest()
-    player.fireTimer = 1 / (weapon.fireRate * modifiers.fireRate * (overloadTimer > 0 ? 1.75 : 1))
+    weaponAmmo.value -= 1
+    player.fireTimer = 1 / (weapon.fireRate * modifiers.fireRate * (overloadTimer > 0 ? 1.75 : 1) * (1 + sustainedFireStacks * 0.015)) + weapon.chargeTime
+    if (weaponAmmo.value <= 0) weaponReloadTimer.value = weapon.reloadTime
   }
 
   for (const enemy of enemies) {
     const statusTick = tickEnemyStatus(enemy.statuses, delta)
-    if (statusTick.burnDamage > 0) {
-      const appliedBurn = Math.min(enemy.hp, statusTick.burnDamage)
-      enemy.hp -= appliedBurn
-      recordDamage(appliedBurn)
+    if (statusTick.dotDamage > 0) {
+      const appliedDot = Math.min(enemy.hp, statusTick.dotDamage)
+      enemy.hp -= appliedDot
+      recordDamage(appliedDot)
+    }
+    if (statusTick.knockbackForce > 0) {
+      const away = Math.atan2(enemy.y - player.y, enemy.x - player.x)
+      enemy.x += Math.cos(away) * Math.min(80, statusTick.knockbackForce)
+      enemy.y += Math.sin(away) * Math.min(80, statusTick.knockbackForce)
     }
     enemy.wobble += delta * (enemy.kind === 'fast' ? 8 : 4)
     enemy.attackTimer -= delta
@@ -1760,16 +1969,16 @@ function update(delta: number) {
     const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y)
     const directAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x)
     let moveAngle = directAngle + Math.sin(enemy.wobble) * (enemy.kind === 'fast' ? 0.32 : 0.12)
-    let speedScale = statusTick.speedMultiplier
+    let speedScale = 1
 
     if (enemy.kind === 'ranged') {
       if (distance < 145) moveAngle = directAngle + Math.PI
       else if (distance < 235) moveAngle = directAngle + Math.PI / 2 * (enemy.id % 2 ? 1 : -1)
       speedScale = enemy.aimTime > 0 ? 0.18 : distance > 235 || distance < 145 ? 0.92 : 0.56
-      if (previousAimTime > 0 && enemy.aimTime <= 0) {
+      if (statusTick.canAct && previousAimTime > 0 && enemy.aimTime <= 0) {
         fireEnemyProjectile(enemy, 0, enemy.aimAngle)
         enemy.attackTimer = enemy.elite ? 1.1 : 1.65
-      } else if (enemy.attackTimer <= 0 && enemy.aimTime <= 0 && distance < levelTuning.enemyWarnings.rangedRange) {
+      } else if (statusTick.canAct && enemy.attackTimer <= 0 && enemy.aimTime <= 0 && distance < levelTuning.enemyWarnings.rangedRange) {
         enemy.aimAngle = directAngle
         enemy.aimTime = levelTuning.enemyWarnings.rangedAimSeconds
       }
@@ -1777,14 +1986,14 @@ function update(delta: number) {
       if (enemy.chargeTime > 0) {
         speedScale = levelTuning.enemyWarnings.fastChargeSpeedMultiplier
         moveAngle = Math.atan2(enemy.vy, enemy.vx)
-      } else if (previousWindup > 0 && enemy.chargeWindup <= 0) {
+      } else if (statusTick.canAct && previousWindup > 0 && enemy.chargeWindup <= 0) {
         enemy.chargeTime = levelTuning.enemyWarnings.fastChargeSeconds
         enemy.chargeHit = false
         enemy.vx = Math.cos(enemy.aimAngle) * enemy.speed * levelTuning.enemyWarnings.fastChargeSpeedMultiplier
         enemy.vy = Math.sin(enemy.aimAngle) * enemy.speed * levelTuning.enemyWarnings.fastChargeSpeedMultiplier
       } else if (enemy.chargeWindup > 0) {
         speedScale = 0.08
-      } else if (enemy.chargeCooldown <= 0 && distance < levelTuning.enemyWarnings.fastChargeRange) {
+      } else if (statusTick.canAct && enemy.chargeCooldown <= 0 && distance < levelTuning.enemyWarnings.fastChargeRange) {
         enemy.chargeWindup = levelTuning.enemyWarnings.fastWindupSeconds
         enemy.chargeCooldown = enemy.elite ? 1.7 : 2.6
         enemy.aimAngle = directAngle
@@ -1803,15 +2012,16 @@ function update(delta: number) {
         announceBanner(`Boss 阶段 ${nextPhase + 1} · ${levelTuning.boss.phases[nextPhase].label}`, 'elite')
       }
       const phase = levelTuning.boss.phases[enemy.bossPhase]
-      if (previousAimTime > 0 && enemy.aimTime <= 0) {
+      if (statusTick.canAct && previousAimTime > 0 && enemy.aimTime <= 0) {
         fireBossVolley(enemy)
         enemy.attackTimer = phase.attackInterval
-      } else if (enemy.attackTimer <= 0 && enemy.aimTime <= 0 && distance < phase.warningRange) {
+      } else if (statusTick.canAct && enemy.attackTimer <= 0 && enemy.aimTime <= 0 && distance < phase.warningRange) {
         enemy.aimAngle = directAngle
         enemy.aimTime = phase.warningSeconds
       }
     }
 
+    speedScale *= statusTick.speedMultiplier
     if (!(enemy.kind === 'fast' && enemy.chargeTime > 0)) {
       enemy.vx = lerp(enemy.vx, Math.cos(moveAngle) * enemy.speed * speedScale, 5.5 * delta)
       enemy.vy = lerp(enemy.vy, Math.sin(moveAngle) * enemy.speed * speedScale, 5.5 * delta)
@@ -1851,10 +2061,16 @@ function update(delta: number) {
       const enemy = enemies[e]
       if (!bullet.hitEnemyIds.has(enemy.id) && Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y) <= enemy.radius + 4) {
         bullet.hitEnemyIds.add(enemy.id)
-        const damage = dealDamage(enemy, bullet.damage, bullet.critical, totalPiercePreview.value, bullet.element, bullet.statusChance)
+        const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y)
+        const closeRangeMultiplier = weapon.attackPattern === 'spread' ? 1 + Math.max(0, 1 - distance / weapon.range) * 0.5 : 1
+        const damage = dealDamage(enemy, bullet.damage * closeRangeMultiplier, bullet.critical, totalPiercePreview.value, bullet.element, bullet.statusChance)
+        if (weapon.attackPattern === 'dual') dualMoveBuffTimer = 2
+        enemy.statuses.knockbackForce = Math.max(enemy.statuses.knockbackForce, bullet.knockback)
+        triggerBulletSecondary(bullet, enemy)
         hitTexts.push({ x: enemy.x + (Math.random() - 0.5) * 12, y: enemy.y - enemy.radius - 10, value: bullet.critical ? `暴击 ${Math.round(damage)}!` : Math.round(damage).toString(), life: bullet.critical ? 0.62 : 0.42, maxLife: bullet.critical ? 0.62 : 0.42, color: bullet.critical ? '#f2c14f' : enemy.boss ? '#e5b84b' : '#f3efe5', critical: bullet.critical })
         playSound(bullet.critical ? 'critical' : 'hit')
         bullet.pierce -= 1
+        if (!modifiers.noPierceFalloff) bullet.damage *= 0.82
         if (enemy.hp <= 0) killEnemy(e)
         if (bullet.pierce < 0) bullets.splice(b, 1)
         break
@@ -1930,13 +2146,28 @@ function update(delta: number) {
   const allWavesCleared = currentWaveCleared && currentWave.value === totalWaves.value
   if (allWavesCleared) {
     highestCleared.value = Math.max(highestCleared.value, stage.value)
-    recordTaskEvent(dailyTasks.value, 'clear')
-    if (stage.value % 10 === 0) recordTaskEvent(dailyTasks.value, 'boss')
+    recordAllTaskEvents('clear')
+    recordAllTaskEvents('stage', stage.value)
+    if (stage.value % 25 === 0) recordAllTaskEvents('resource')
+    if (stage.value >= 3000 && stage.value % 50 === 0) recordAllTaskEvents('challenge')
     const stageReward = rewardForStage(stage.value, kills.value)
     const profile = getAttachmentDropProfile(stage.value)
-    const attachmentDropCount = gameplayRandom() < profile.dropChance ? Math.max(1, stageReward.parts) : 0
-    const attachmentDrops = grantAttachmentDrops(attachmentDropCount, profile.rarityWeights)
-    const reward: Reward = { ...stageReward, gold: Math.round(stageReward.gold * modifiers.goldGain), attachments: attachmentDrops }
+    const guaranteedRarity = guaranteedDropRarity(stage.value, dropPity)
+    const shouldDrop = gameplayRandom() < Math.min(1, profile.dropChance * (1 + modifiers.dropRate))
+    const attachmentDropCount = shouldDrop || guaranteedRarity ? Math.max(1, stageReward.parts) : 0
+    const attachmentDrops = grantAttachmentDrops(attachmentDropCount, profile.rarityWeights, guaranteedRarity)
+    const bestRarity = attachmentDrops.reduce<AttachmentRarity>((best, item) => rarityRank(item.rarity) > rarityRank(best) ? item.rarity : best, '普通')
+    recordPityDrop(dropPity, stage.value, bestRarity, stage.value % 10 === 0)
+    const rewardDoubled = gameplayRandom() < modifiers.doubleRewardChance
+    const rewardMultiplier = rewardDoubled ? 2 : 1
+    const reward: Reward = {
+      ...stageReward,
+      gold: Math.round(stageReward.gold * modifiers.goldGain * rewardMultiplier),
+      alloy: stageReward.alloy * rewardMultiplier,
+      parts: stageReward.parts * rewardMultiplier,
+      exp: stageReward.exp * rewardMultiplier,
+      attachments: attachmentDrops
+    }
     resources.gold += reward.gold
     runStats.goldEarned += reward.gold
     resources.alloy += reward.alloy
@@ -1945,7 +2176,7 @@ function update(delta: number) {
     settlementEquipNotice.value = null
     lastRun.value = {
       title: `第 ${stage.value} 关清场`,
-      body: attachmentDrops.length ? `缴获 ${attachmentDrops.map((item) => item.name).join('、')}，回基地可替换构筑。` : `${stageMeta.value.name} 已压制，本次未发现可用配件。`,
+      body: attachmentDrops.length ? `${rewardDoubled ? '黄金后勤触发奖励翻倍；' : ''}缴获 ${attachmentDrops.map((item) => item.name).join('、')}，回基地可替换构筑。` : `${stageMeta.value.name} 已压制，本次未发现可用配件。`,
       victory: true,
       reward,
       stats: snapshotRunStats(true)
@@ -2282,6 +2513,13 @@ function resetRunState() {
   spawnTimer = 0
   overloadTimer = 0
   dashTimer = 0
+  eliteSetBuffTimer = 0
+  dualMoveBuffTimer = 0
+  sustainedFireStacks = 0
+  lastLockedTargetId = 0
+  lockedTargetHits = 0
+  weaponAmmo.value = weapon.magazineSize
+  weaponReloadTimer.value = 0
   bossSpawned = false
   upgradeTakenForStage.value = 0
   upgradeChoices.value = []
@@ -2375,6 +2613,7 @@ onMounted(() => {
   applyBaseStats()
   movePlayerToAreaCenter()
   canPersist = true
+  cloud.initialize()
   watch(stage, (value) => {
     stageDraft.value = value
   })
@@ -2446,10 +2685,14 @@ onBeforeUnmount(() => {
     formatEnemyKinds, lastRunStrategyInsights, settlementLootTone, settlementLootLabel,
     isAttachmentInInventory, isAttachmentEquipped, settlementLootStatus,
     equipSettlementAttachment, settlementEquipNotice, postBattleChoices,
-    choosePostBattle, advanceAndStart, weaponOptions, equipWeapon, talentCards,
+    choosePostBattle, advanceAndStart, weaponOptions, equipWeapon, weaponAmmo, weaponReloadTimer,
+    currentWeaponProgress, currentWeaponUpgradeCost, currentWeaponStarCost, upgradeCurrentWeapon, starCurrentWeapon,
+    talentCards,
     talentPointsTotal, talentPointsSpent, talentPointsAvailable, upgradeTalent,
-    setProgress, pendingOfflineReward, claimOfflineReward, dailyTasks,
-    completedDailyTasks, claimDailyTask, cloudSyncState
+    setProgress, pendingOfflineReward, claimOfflineReward, dailyTasks, weeklyTasks, achievements,
+    completedDailyTasks, completedWeeklyTasks, completedAchievements, claimDailyTask, claimTask, dropPity,
+    cloudSyncState, cloudUsername, cloudPassword, cloudHasSession, cloudConflict,
+    cloudLogin, cloudRegister, cloudLogout, syncCloudSave, keepLocalCloudSave, useRemoteCloudSave
   }
 }
 
