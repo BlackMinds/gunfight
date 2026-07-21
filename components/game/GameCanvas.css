@@ -865,7 +865,7 @@
   min-width: 300px;
   max-height: none;
   transform: none;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
   padding: 12px;
 }
@@ -3074,6 +3074,295 @@
   }
 }
 
+/* 2026-07-16：三维配件决策、专属效果与真实武器槽位状态。 */
+.game-screen .attachment-special-effect {
+  margin: 0;
+  padding: 7px 9px;
+  display: flex;
+  gap: 7px;
+  color: #dcc6f5;
+  border-left: 2px solid #a879d3;
+  background: rgba(66, 35, 91, 0.28);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.game-screen .attachment-special-effect b {
+  flex: 0 0 auto;
+  color: #efdcff;
+}
+
+.game-screen .attachment-dimensions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.game-screen .attachment-dimensions article {
+  min-width: 0;
+  padding: 7px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(125, 139, 146, 0.28);
+  background: rgba(8, 11, 12, 0.56);
+}
+
+.game-screen .attachment-dimensions article.gain { border-color: rgba(116, 166, 105, 0.55); }
+.game-screen .attachment-dimensions article.loss { border-color: rgba(218, 76, 61, 0.45); }
+.game-screen .attachment-dimensions span,
+.game-screen .attachment-dimensions small { color: var(--muted); font-size: 11px; }
+.game-screen .attachment-dimensions b { color: #f3e6be; font-size: 12px; }
+
+.game-screen .equipment-slot.inactive {
+  opacity: 0.54;
+  border-style: dashed;
+}
+
+.game-screen .equipment-slot em {
+  color: #e29b7f;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.game-screen .equipment-slot.selected {
+  border-color: rgba(240, 191, 87, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(240, 191, 87, 0.16);
+}
+
+.game-screen .equipment-manage-trigger {
+  width: fit-content;
+  min-height: 24px;
+  padding: 3px 9px;
+  color: #f4d77d;
+  font-size: 11px;
+}
+
+.game-screen .equipment-cultivation {
+  padding: 9px;
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1.2fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(240, 191, 87, 0.3);
+  border-radius: 8px;
+  background: rgba(8, 11, 12, 0.86);
+}
+
+.game-screen .equipment-cultivation > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.game-screen .equipment-cultivation small,
+.game-screen .equipment-cultivation span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-screen .equipment-cultivation b { color: #f4d77d; }
+.game-screen .equipment-affix-locks { display: flex; flex-wrap: wrap; gap: 4px; }
+.game-screen .equipment-affix-locks button { min-height: 28px; padding: 4px 7px; font-size: 10px; }
+.game-screen .equipment-affix-locks button.locked { border-color: #f0bf57; color: #f4d77d; }
+.game-screen .equipment-cultivation-actions { display: grid; gap: 5px; }
+.game-screen .equipment-cultivation-actions button { min-height: 30px; padding: 5px 8px; font-size: 11px; }
+
+.game-screen .pity-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.game-screen .pity-status button { min-height: 38px; }
+
+.game-screen .post-battle-choice-notice {
+  color: #b6d68b;
+  text-align: center;
+}
+
+/* 桌面端保留键盘提示，触控摇杆只在移动端出现。 */
+.game-screen .mobile-joystick,
+.game-screen .mobile-control-hint { display: none; }
+
+.game-screen .control-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 112px;
+  z-index: 7;
+  margin: 0;
+  padding: 7px 12px;
+  transform: translateX(-50%);
+  color: #f3e6be;
+  border: 1px solid rgba(240, 191, 87, 0.38);
+  border-radius: 999px;
+  background: rgba(8, 11, 12, 0.82);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .game-screen.mode-battle {
+    height: 100dvh;
+    min-height: 560px;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  .game-screen.mode-battle .hud-left {
+    position: fixed;
+    left: 8px;
+    top: 154px;
+    z-index: 6;
+    width: min(210px, calc(100vw - 96px));
+    height: auto;
+    padding: 0;
+    display: block;
+    overflow: visible;
+  }
+
+  .game-screen.mode-battle .hud-left .stat-board { display: none; }
+  .game-screen.mode-battle .profile-card { padding: 8px; }
+  .game-screen.mode-battle .top-actions {
+    top: 8px;
+    right: 8px;
+    z-index: 9;
+    grid-template-columns: minmax(104px, auto) auto auto;
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .game-screen.mode-battle .skill-bar {
+    position: fixed;
+    right: 12px;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    left: auto;
+    z-index: 10;
+    width: 72px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    transform: none;
+  }
+
+  .game-screen.mode-battle .skill-bar button {
+    width: 72px;
+    min-width: 72px;
+    height: 72px;
+    min-height: 72px;
+    padding: 6px;
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .game-screen.mode-battle .skill-bar img {
+    width: 38px;
+    height: 38px;
+  }
+
+  .game-screen.mode-battle .skill-bar span {
+    grid-column: 1 / -1;
+  }
+
+  .game-screen.mode-battle .skill-bar span b { font-size: 10px; }
+  .game-screen.mode-battle .skill-bar span small { display: none; }
+
+  .game-screen .mobile-joystick {
+    position: fixed;
+    left: 16px;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    z-index: 10;
+    width: 136px;
+    height: 136px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 224, 139, 0.45);
+    border-radius: 50%;
+    background: rgba(7, 10, 11, 0.55);
+    box-shadow: inset 0 0 24px rgba(240, 191, 87, 0.1);
+    touch-action: none;
+    user-select: none;
+  }
+
+  .game-screen .mobile-joystick__ring {
+    position: absolute;
+    inset: 24px;
+    border: 1px dashed rgba(255, 224, 139, 0.32);
+    border-radius: 50%;
+  }
+
+  .game-screen .mobile-joystick i {
+    width: 54px;
+    height: 54px;
+    border: 2px solid rgba(255, 224, 139, 0.72);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(240, 191, 87, 0.72), rgba(101, 66, 24, 0.78));
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.42);
+    pointer-events: none;
+  }
+
+  .game-screen .mobile-joystick small {
+    position: absolute;
+    bottom: 8px;
+    color: #dccb99;
+    font-size: 11px;
+  }
+
+  .game-screen .mobile-joystick.active {
+    border-color: rgba(255, 224, 139, 0.92);
+    background: rgba(28, 24, 13, 0.76);
+    box-shadow: inset 0 0 28px rgba(240, 191, 87, 0.22), 0 0 18px rgba(240, 191, 87, 0.2);
+  }
+
+  .game-screen .mobile-joystick.active .mobile-joystick__ring {
+    border-style: solid;
+    border-color: rgba(255, 224, 139, 0.62);
+  }
+
+  .game-screen .control-hint {
+    left: 84px;
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 146px);
+    transform: none;
+  }
+
+  .game-screen .desktop-control-hint { display: none; }
+  .game-screen .mobile-control-hint { display: inline; }
+
+  .game-screen .attachment-dimensions { grid-template-columns: 1fr; }
+  .game-screen .pity-status { align-items: stretch; flex-direction: column; }
+}
+
+@media (max-width: 720px) {
+  .game-screen.mode-battle .hud-left.is-upgrade-obscured {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .game-screen.mode-battle .choice-panel {
+    position: fixed;
+    inset: max(12px, env(safe-area-inset-top)) 12px auto;
+    z-index: 30;
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - max(24px, env(safe-area-inset-top)) - 12px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: none;
+    background: linear-gradient(180deg, rgba(27, 31, 30, 0.99), rgba(10, 13, 14, 0.99));
+    box-shadow: 0 0 0 100vmax rgba(4, 6, 7, 0.74), 0 18px 46px rgba(0, 0, 0, 0.72);
+  }
+
+  .game-screen.mode-battle .choice-panel > div button {
+    position: relative;
+    z-index: 1;
+    min-height: 116px;
+    touch-action: manipulation;
+  }
+}
+
 .game-screen .progression-panel {
   display: grid;
   gap: 12px;
@@ -3081,6 +3370,10 @@
   border: 1px solid rgba(119, 183, 215, 0.22);
   border-radius: 8px;
   background: linear-gradient(135deg, rgba(18, 25, 28, 0.9), rgba(10, 13, 14, 0.94));
+}
+
+.game-screen .progression-mobile {
+  display: none !important;
 }
 
 .game-screen .progression-head,
@@ -3463,7 +3756,7 @@
   left: 50%;
   top: 122px;
   z-index: 4;
-  width: min(520px, calc(100vw - 650px));
+  width: min(500px, calc(100vw - 650px));
   min-width: 360px;
   padding: 9px 14px 10px;
   transform: translateX(-50%);
@@ -3813,7 +4106,7 @@
   }
 
   .game-screen .wave-command {
-    top: 68px;
+    top: 76px;
   }
 
   .game-screen .boss-hud {
@@ -3821,6 +4114,16 @@
   }
 
   .game-screen .combat-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .game-screen .equipment-cultivation {
+    grid-template-columns: 1fr;
+  }
+
+  .game-screen .equipment-cultivation-actions {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -3988,6 +4291,20 @@
   .game-screen.mode-base .base-panel {
     z-index: 7;
     overflow: visible;
+  }
+
+  .game-screen.mode-base .progression-desktop {
+    display: none !important;
+  }
+
+  .game-screen.mode-base .progression-mobile {
+    position: relative;
+    inset: auto;
+    z-index: 7;
+    width: calc(100% - 16px);
+    height: auto;
+    margin: 8px;
+    display: grid !important;
   }
 
   .game-screen.mode-base .equipment-dock {

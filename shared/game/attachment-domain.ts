@@ -14,6 +14,14 @@ export type AttachmentDecision = {
   actionLabel: '推荐装备' | '适合保留'
   tone: AttachmentDecisionTone
 }
+export type AttachmentDimension = {
+  key: 'offense' | 'survival' | 'utility'
+  label: '输出' | '生存' | '功能'
+  current: number
+  next: number
+  delta: number
+  summary: string
+}
 
 type AttachmentBonusMap = NonNullable<Attachment['bonuses']>
 
@@ -135,6 +143,22 @@ export function buildAttachmentComparison(current: Attachment | undefined, next:
       current: formatBonusValue(key, current?.bonuses?.[key]),
       next: formatBonusValue(key, next.bonuses?.[key])
     }))
+}
+
+export function buildAttachmentDimensions(current: Attachment | undefined, next: Attachment): AttachmentDimension[] {
+  const value = (item: Attachment | undefined, key: AttachmentBonusKey) => item?.bonuses?.[key] ?? 0
+  const score = (item: Attachment | undefined) => ({
+    offense: value(item, 'damage') * 100 + value(item, 'fireRate') * 80 + value(item, 'critRate') * 90 + value(item, 'pierce') * 16,
+    survival: value(item, 'maxHp') + value(item, 'speed') * 120,
+    utility: value(item, 'pickup') * 0.7 + value(item, 'expGain') * 120
+  })
+  const before = score(current)
+  const after = score(next)
+  return [
+    { key: 'offense', label: '输出', current: before.offense, next: after.offense, delta: after.offense - before.offense, summary: '伤害、射速、暴击与穿透' },
+    { key: 'survival', label: '生存', current: before.survival, next: after.survival, delta: after.survival - before.survival, summary: '最大生命与移动容错' },
+    { key: 'utility', label: '功能', current: before.utility, next: after.utility, delta: after.utility - before.utility, summary: '拾取范围与经验收益' }
+  ].map((dimension) => ({ ...dimension, current: Math.round(dimension.current * 10) / 10, next: Math.round(dimension.next * 10) / 10, delta: Math.round(dimension.delta * 10) / 10 })) as AttachmentDimension[]
 }
 
 export function buildAttachmentDecision(current: Attachment | undefined, next: Attachment): AttachmentDecision {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyElementStatus,
+  attachmentDropCount,
   calculateOfflineReward,
   combinedSetBonuses,
   createAchievements,
@@ -36,7 +37,10 @@ describe('完整长线系统领域规则', () => {
       { name: 'C', slot: '模块', rarity: '传说', effect: '', setKey: '赤焰清道夫' },
       { name: 'D', slot: '枪管', rarity: '传说', effect: '', setKey: '赤焰清道夫' }
     ] satisfies Attachment[]
-    expect(combinedSetBonuses(equipped)).toMatchObject({ statusPower: 0.15, damage: 0.12, burnExplosion: true })
+    expect(combinedSetBonuses(equipped)).toMatchObject({ fireDamage: 0.15, damage: 0, burnExplosion: true })
+    const amplified = combinedSetBonuses(equipped, true)
+    expect(amplified.fireDamage).toBeCloseTo(0.225)
+    expect(amplified).toMatchObject({ damage: 0, burnExplosion: true })
   })
 
   it('七种伤害可覆盖策划中的十种状态结果', () => {
@@ -85,12 +89,30 @@ describe('完整长线系统领域规则', () => {
   it('Boss、传说和神话保底状态能够累计与清零', () => {
     const pity = emptyDropPity()
     pity.bossKills = 9
-    expect(guaranteedDropRarity(100, pity)).toBe('稀有')
-    pity.legendaryMisses = 30
-    expect(guaranteedDropRarity(3000, pity)).toBe('传说')
+    expect(guaranteedDropRarity(91, pity, false)).toBeNull()
+    expect(guaranteedDropRarity(100, pity, true)).toBe('稀有')
+    pity.legendaryMisses = 29
+    expect(guaranteedDropRarity(3000, pity, true)).toBe('传说')
     recordPityDrop(pity, 3000, '传说', true)
     expect(pity.legendaryMisses).toBe(0)
     pity.mythicShards = 10
-    expect(guaranteedDropRarity(7000, pity)).toBe('神话')
+    expect(guaranteedDropRarity(7000, pity, true)).not.toBe('神话')
+    expect(pity.mythicShards).toBe(10)
+  })
+
+  it('史诗保底按连续未出次数累计，期间随机史诗会重置', () => {
+    const pity = emptyDropPity()
+    pity.epicMisses = 98
+    recordPityDrop(pity, 990, '史诗', true)
+    expect(pity.epicMisses).toBe(0)
+    expect(guaranteedDropRarity(1000, pity, true)).not.toBe('史诗')
+    pity.epicMisses = 99
+    expect(guaranteedDropRarity(1000, pity, true)).toBe('史诗')
+  })
+
+  it('关卡资源零件不再放大配件掉落件数', () => {
+    expect(attachmentDropCount(false, null)).toBe(0)
+    expect(attachmentDropCount(true, null)).toBe(1)
+    expect(attachmentDropCount(false, '史诗')).toBe(1)
   })
 })

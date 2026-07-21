@@ -8,6 +8,24 @@ export type AttachmentReforgeCost = {
   alloy: number
 }
 
+const reforgeCosts: Record<Attachment['rarity'], AttachmentReforgeCost> = {
+  普通: { parts: 2, gold: 40, alloy: 0 },
+  精良: { parts: 5, gold: 70, alloy: 0 },
+  稀有: { parts: 7, gold: 110, alloy: 0 },
+  史诗: { parts: 10, gold: 160, alloy: 0 },
+  传说: { parts: 14, gold: 260, alloy: 0 },
+  神话: { parts: 18, gold: 420, alloy: 5 }
+}
+
+const lockAlloyCosts: Record<Attachment['rarity'], number> = {
+  普通: 1,
+  精良: 1,
+  稀有: 2,
+  史诗: 3,
+  传说: 5,
+  神话: 8
+}
+
 function overflowPriority(item: Attachment) {
   const rarity = Math.max(0, attachmentRarities.indexOf(item.rarity))
   const level = Math.max(0, item.level ?? 0)
@@ -36,13 +54,20 @@ export function resolveAttachmentOverflow(items: Attachment[], protectedKeys: Re
 }
 
 export function getAttachmentReforgeCost(item: Attachment, lockAffix = false): AttachmentReforgeCost {
-  const rank = Math.max(0, attachmentRarities.indexOf(item.rarity))
-  const parts = 2 + rank * 2 + Math.floor((item.subAffixes?.length ?? 0) / 2)
-  const gold = [40, 70, 110, 160][rank] ?? 40
-  const alloy = lockAffix ? ([1, 1, 2, 3][rank] ?? 1) : 0
-  return { parts, gold, alloy }
+  const base = reforgeCosts[item.rarity]
+  return {
+    ...base,
+    alloy: base.alloy + (lockAffix ? lockAlloyCosts[item.rarity] : 0)
+  }
 }
 
 export function canAffordAttachmentReforge(resources: AttachmentReforgeCost, cost: AttachmentReforgeCost) {
   return resources.parts >= cost.parts && resources.gold >= cost.gold && resources.alloy >= cost.alloy
+}
+
+export function getAttachmentRecycleValue(item: Attachment) {
+  const goldByRarity = [18, 32, 58, 96, 180, 320]
+  const partsByRarity = [0, 1, 2, 4, 8, 14]
+  const rank = Math.max(0, attachmentRarities.indexOf(item.rarity))
+  return { gold: goldByRarity[rank] ?? 18, parts: (partsByRarity[rank] ?? 0) + Math.floor((item.level ?? 0) / 2) }
 }

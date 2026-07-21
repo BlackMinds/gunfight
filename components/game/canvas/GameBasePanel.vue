@@ -32,6 +32,7 @@
             <span>下一关敌情</span>
             <b>{{ nextEnemyPreview.label }}</b>
             <small>生命 {{ nextEnemyPreview.hp }} · 伤害 {{ nextEnemyPreview.damage }} · {{ stageType }}</small>
+            <small v-if="nextEnemyPreview.mechanicLabels.length">R4 机制：{{ nextEnemyPreview.mechanicLabels.join(' / ') }}</small>
           </article>
         </div>
         <div class="stage-picker" aria-label="关卡选择">
@@ -44,7 +45,7 @@
           <button type="button" @click="adjustStage(1)">+1</button>
           <button type="button" @click="adjustStage(10)">+10</button>
         </div>
-        <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · 第 11～10000 关尚未完成平衡验证</p>
+        <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · 第 101～500 关为 R4 验收内容，正式版本仍封顶第 100 关；第 501～10000 关尚未完成内容验证</p>
         <div class="reward-preview" aria-label="奖励预览">
           <article>
             <span>预计金币</span>
@@ -84,8 +85,6 @@
           </div>
         </div>
       </div>
-
-      <GameProgressionPanel />
 
       <div class="base-backpack" :class="{ 'sale-mode': isSaleMode }">
         <div class="base-backpack-head">
@@ -183,6 +182,7 @@
                 <strong :class="`tone-${attachmentDecisionFor(item).tone}`">{{ attachmentDecisionFor(item).actionLabel }}</strong>
               </div>
               <em>{{ item.effect }}</em>
+              <p v-if="item.specialEffect" class="attachment-special-effect"><b>专属效果</b>{{ item.specialEffect }}</p>
               <div v-if="item.subAffixes?.length" class="inventory-tooltip-affixes" aria-label="副词条锁定">
                 <button
                   v-for="affix in item.subAffixes"
@@ -212,8 +212,15 @@
                   <b>{{ row.next }}</b>
                 </div>
               </div>
+              <div class="attachment-dimensions" aria-label="输出、生存和功能对比">
+                <article v-for="dimension in attachmentDimensionsFor(item)" :key="dimension.key" :class="{ gain: dimension.delta > 0, loss: dimension.delta < 0 }">
+                  <span>{{ dimension.label }}</span>
+                  <b>{{ dimension.current }} → {{ dimension.next }}</b>
+                  <small>{{ dimension.delta > 0 ? '+' : '' }}{{ dimension.delta }} · {{ dimension.summary }}</small>
+                </article>
+              </div>
               <div class="inventory-tooltip-actions">
-                <button type="button" :disabled="!canSwapAttachment" @click.stop="equipInventoryAttachment(item)">装备 {{ item.slot }}</button>
+                <button type="button" :disabled="!canSwapAttachment || !canEquipAttachment(item)" @click.stop="equipInventoryAttachment(item)">{{ canEquipAttachment(item) ? `装备 ${item.slot}` : `已达 ${weapon.slotCount} 槽上限` }}</button>
                 <button type="button" data-testid="favorite-toggle" :class="{ active: item.favorite }" :aria-pressed="Boolean(item.favorite)" @click.stop="toggleAttachmentFavorite(item)">{{ item.favorite ? '取消收藏' : '收藏保护' }}</button>
                 <button type="button" :disabled="!canUpgradeAttachment(item)" @click.stop="upgradeInventoryAttachment(item)">强化 {{ attachmentUpgradeCost(item) }} 零件</button>
                 <button type="button" data-testid="reforge-action" :disabled="!canReforgeAttachment(item)" @click.stop="reforgeInventoryAttachment(item)">重铸 {{ formatReforgeCost(item) }}</button>
@@ -228,6 +235,8 @@
           <strong>返还金币 +{{ overflowSalvageNotice.gold }} / 零件 +{{ overflowSalvageNotice.parts }}</strong>
         </div>
       </div>
+
+      <GameProgressionPanel class="progression-desktop" />
     </section>
 </template>
 
@@ -250,7 +259,7 @@ const {
   equipmentIconStyle, attachmentSlots, formatRoll, attachmentDecisionFor,
   isReforgeAffixLocked, toggleReforgeAffixLock, formatAffix, reforgeShortageText,
   formatReforgeCost, currentAttachmentFor, attachmentComparisonFor,
-  equipInventoryAttachment, toggleAttachmentFavorite, canUpgradeAttachment,
+  attachmentDimensionsFor, canEquipAttachment, weapon, equipInventoryAttachment, toggleAttachmentFavorite, canUpgradeAttachment,
   upgradeInventoryAttachment, attachmentUpgradeCost, canReforgeAttachment,
   reforgeInventoryAttachment, overflowSalvageNotice
 } = useGameCanvasContext()

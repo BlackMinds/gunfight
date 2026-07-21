@@ -14,8 +14,8 @@ describe('R2 固定构筑夹具', () => {
       { damage: 0, fireRate: 0, maxHp: 0, pickup: 0, speed: 0, pierce: 0, expGain: 0, critRate: 0 }
     )
 
-    expect(Math.round(18 * (1 + bonuses.damage))).toBe(20)
-    expect((4.8 * (1 + bonuses.fireRate)).toFixed(1)).toBe('5.4')
+    expect(Math.round(16 * (1 + bonuses.damage))).toBe(18)
+    expect((8.1 * (1 + bonuses.fireRate)).toFixed(1)).toBe('9.2')
     expect(bonuses).toMatchObject({ maxHp: 18, speed: 0.06, pierce: 1, critRate: 0.04 })
   })
 
@@ -28,6 +28,7 @@ describe('R2 固定构筑夹具', () => {
       expect(fixture.player).toEqual(baseline.player)
       expect(fixture.resources).toEqual(baseline.resources)
       expect(fixture.equipped).toEqual(baseline.equipped)
+      expect(fixture.selectedWeaponKey).toBe('light-machine-gun')
     }
   })
 

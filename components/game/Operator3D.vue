@@ -54,7 +54,7 @@ let resizeObserver: ResizeObserver | null = null
 let animationFrame = 0
 let targetRotation = Math.PI - 0.16
 let cameraDistance = 7.65
-const clock = new THREE.Clock()
+const timer = new THREE.Timer()
 
 const armor = new THREE.MeshStandardMaterial({ color: 0x363a38, metalness: 0.82, roughness: 0.3 })
 const armorLight = new THREE.MeshStandardMaterial({ color: 0x8a7d5d, metalness: 0.72, roughness: 0.34 })
@@ -299,7 +299,8 @@ function render() {
   }
   operator.rotation.y += (targetRotation - operator.rotation.y) * 0.16
   camera.position.z += (cameraDistance - camera.position.z) * 0.12
-  mixer?.update(Math.min(clock.getDelta(), 0.05))
+  timer.update()
+  mixer?.update(Math.min(timer.getDelta(), 0.05))
   renderer.render(scene, camera)
 }
 
@@ -359,6 +360,7 @@ function loadDetailedOperator() {
 
 onMounted(() => {
   if (!canvasRef.value || !hostRef.value) return
+  timer.connect(document)
   scene = new THREE.Scene()
   scene.fog = new THREE.FogExp2(0x080b0c, 0.055)
   camera = new THREE.PerspectiveCamera(38, 1, 0.1, 30)
@@ -369,7 +371,7 @@ onMounted(() => {
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = 1.18
   renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.shadowMap.type = THREE.PCFShadowMap
 
   scene.add(new THREE.HemisphereLight(0xa9d9e7, 0x171108, 1.45))
   const key = new THREE.DirectionalLight(0xffdf9a, 3.1)
@@ -398,6 +400,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(animationFrame)
+  timer.disconnect()
   resizeObserver?.disconnect()
   scene?.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return

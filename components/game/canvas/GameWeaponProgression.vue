@@ -5,7 +5,7 @@
       <button v-for="item in weaponOptions" :key="item.key" type="button" :class="{ equipped: item.equipped }" :disabled="!item.unlocked || item.equipped" :data-testid="`weapon-${item.key}`" @click="equipWeapon(item)">
         <small>{{ item.category }} · {{ item.element }} · Lv.{{ item.unlockLevel }} 解锁</small>
         <b>{{ item.name }} · {{ '★'.repeat(item.progress.stars) || '未升星' }}</b>
-        <span>Lv.{{ item.progress.level }} · 伤害 {{ item.damage }} · 射速 {{ item.fireRate }} · 弹匣 {{ item.magazineSize }}</span>
+        <span>Lv.{{ item.progress.level }} · 伤害 {{ item.damage }} · 射速 {{ item.fireRate }} · 弹匣 {{ item.magazineSize }} · {{ item.slotCount }} 槽</span>
         <em>{{ item.unlocked ? `${item.fixedTrait}｜${item.traits.join(' / ')}` : `角色达到 Lv.${item.unlockLevel}` }}</em>
       </button>
     </div>

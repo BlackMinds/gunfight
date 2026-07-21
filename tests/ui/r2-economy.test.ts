@@ -50,6 +50,47 @@ afterEach(() => {
 })
 
 describe('R2 经济闭环 UI 注入', () => {
+  it('战斗 HUD 合并击杀与时间，并提供移动端触控摇杆', async () => {
+    const host = await mountGame()
+    query<HTMLButtonElement>(host, '[data-testid="deploy-stage"]').click()
+    await nextTick()
+
+    expect(query(host, '.wave-command').textContent).toContain('击杀 0/')
+    expect(query(host, '.wave-command').textContent).toContain('00:00')
+    expect(query(host, '.hud-left .stat-board').textContent).not.toContain('击杀数')
+    expect(query(host, '.hud-right').textContent).not.toContain('总伤害')
+    expect(query(host, '.mobile-joystick').getAttribute('aria-label')).toBe('触控移动摇杆')
+    expect(host.querySelectorAll('.skill-bar button')).toHaveLength(3)
+  })
+
+  it('基地按部署、背包、长期养成顺序呈现', async () => {
+    const host = await mountGame()
+    const deploy = query(host, '[data-testid="deploy-stage"]')
+    const backpack = query(host, '.base-backpack')
+    const progression = query(host, '.progression-panel')
+
+    expect(deploy.compareDocumentPosition(backpack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(backpack.compareDocumentPosition(progression) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('已装备配件可直接选择并强化', async () => {
+    const fixture = createR2InventorySave({ count: 0, resources: { gold: 500, alloy: 10, parts: 50 } })
+    fixture.equipped[0].id = 'starter-legacy'
+    fixture.equipped[0].subAffixes = []
+    const host = await mountGame(fixture)
+    query<HTMLButtonElement>(host, '.equipment-manage-trigger').click()
+    await nextTick()
+
+    const cultivation = query(host, '[data-testid="equipped-cultivation"]')
+    expect(cultivation.textContent).toContain('已装备配件培养')
+    expect(cultivation.querySelectorAll('.equipment-affix-locks button')).toHaveLength(3)
+    query<HTMLButtonElement>(cultivation, '.equipment-cultivation-actions button').click()
+    await nextTick()
+    expect(cultivation.textContent).toContain('+1')
+    const saved = JSON.parse(localStorage.getItem(GAME_SAVE_KEY)!) as GameSaveFixture
+    expect(saved.equipped[0].level).toBe(1)
+  })
+
   it('注入 30 件时展示 6 件自动回收明细，出售全选跳过 6 件收藏', async () => {
     const host = await mountGame(createR2InventorySave({ count: 30, favoriteIndexes: [24, 25, 26, 27, 28, 29] }))
 
@@ -100,7 +141,7 @@ describe('R2 经济闭环 UI 注入', () => {
 
     expect(lockButton.getAttribute('aria-pressed')).toBe('true')
     const shortage = query(target, '[data-testid="reforge-cost-status"]').textContent ?? ''
-    expect(shortage).toContain('零件差 9')
+    expect(shortage).toContain('零件差 10')
     expect(shortage).toContain('金币差 142')
     expect(shortage).toContain('合金差 3')
     expect(query<HTMLButtonElement>(target, '[data-testid="reforge-action"]').disabled).toBe(true)

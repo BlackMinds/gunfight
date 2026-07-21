@@ -49,7 +49,7 @@ export const talentNodes: TalentNode[] = [
   talent({ id: 'survival-armor', branchId: 'survival', branch: '生存', name: '冲击吸收', description: '每级减伤 +2%', maxLevel: 5, requires: { id: 'survival-vitality', level: 3 }, bonuses: { damageReduction: 0.02 } }),
   talent({ id: 'survival-regen', branchId: 'survival', branch: '生存', name: '战地再生', description: '每级每秒恢复 0.5 生命', maxLevel: 5, requires: { id: 'survival-armor', level: 3 }, bonuses: { healthRegen: 0.5 } }),
   talent({ id: 'survival-leech', branchId: 'survival', branch: '生存', name: '生命汲取', description: '每级吸血 +0.5%', maxLevel: 4, requires: { id: 'survival-regen', level: 3 }, bonuses: { lifesteal: 0.005 } }),
-  talent({ id: 'survival-laststand', branchId: 'survival', branch: '生存', name: '最后防线', description: '每级最大生命 +5% 并提高闪避', maxLevel: 3, requires: { id: 'survival-leech', level: 4 }, bonuses: { maxHp: 8, dodge: 0.025 } }),
+  talent({ id: 'survival-laststand', branchId: 'survival', branch: '生存', name: '最后防线', description: '每级最大生命 +8、闪避 +2.5%', maxLevel: 3, requires: { id: 'survival-leech', level: 4 }, bonuses: { maxHp: 8, dodge: 0.025 } }),
 
   talent({ id: 'mobility-frame', branchId: 'mobility', branch: '机动', name: '轻量骨架', description: '每级移动速度 +3%', maxLevel: 5, bonuses: { speed: 0.03 } }),
   talent({ id: 'mobility-evasion', branchId: 'mobility', branch: '机动', name: '威胁预判', description: '每级闪避 +2%', maxLevel: 5, requires: { id: 'mobility-frame', level: 3 }, bonuses: { dodge: 0.02 } }),
@@ -101,6 +101,8 @@ export type SetBonuses = {
   damage: number
   fireRate: number
   pierce: number
+  fireDamage: number
+  shockChance: number
   statusPower: number
   goldGain: number
   maxHp: number
@@ -116,15 +118,15 @@ export type SetBonuses = {
 export type SetSummary = { key: EquipmentSetKey; count: number; nextThreshold: number | null; effects: string[]; bonuses: SetBonuses }
 
 const setDefinitions: Record<EquipmentSetKey, { two: string; four: string; twoBonus: Partial<SetBonuses>; fourBonus: Partial<SetBonuses> }> = {
-  赤焰清道夫: { two: '火焰伤害 +15%', four: '灼烧敌人死亡时爆燃', twoBonus: { statusPower: 0.15 }, fourBonus: { damage: 0.12, burnExplosion: true } },
-  雷暴执行者: { two: '电击概率 +10%', four: '连锁电击次数 +2', twoBonus: { fireRate: 0.1 }, fourBonus: { extraChains: 2 } },
+  赤焰清道夫: { two: '火焰伤害 +15%', four: '灼烧敌人死亡时爆燃', twoBonus: { fireDamage: 0.15 }, fourBonus: { burnExplosion: true } },
+  雷暴执行者: { two: '电击概率 +10%', four: '连锁电击次数 +2', twoBonus: { shockChance: 0.1 }, fourBonus: { extraChains: 2 } },
   穿甲猎手: { two: '穿透 +1', four: '穿透后伤害不再衰减', twoBonus: { pierce: 1 }, fourBonus: { noPierceFalloff: true } },
-  血色幸存者: { two: '吸血 +2%', four: '低血量时吸血翻倍', twoBonus: { lifesteal: 0.02, maxHp: 30 }, fourBonus: { lowHealthLifesteal: true } },
+  血色幸存者: { two: '吸血 +2%', four: '低血量时吸血翻倍', twoBonus: { lifesteal: 0.02 }, fourBonus: { lowHealthLifesteal: true } },
   黄金后勤: { two: '金币 +20%', four: '通关奖励有概率额外翻倍', twoBonus: { goldGain: 0.2 }, fourBonus: { doubleRewardChance: 0.12 } },
-  黑域终端: { two: '对精英和 Boss 增伤', four: '击败精英后短时间全属性提高', twoBonus: { eliteDamage: 0.18 }, fourBonus: { eliteKillBuff: true } }
+  黑域终端: { two: '对精英和 Boss 增伤 +18%', four: '击败精英后 6 秒伤害、射速、暴击与移速 +25%', twoBonus: { eliteDamage: 0.18 }, fourBonus: { eliteKillBuff: true } }
 }
 
-const emptySetBonuses = (): SetBonuses => ({ damage: 0, fireRate: 0, pierce: 0, statusPower: 0, goldGain: 0, maxHp: 0, lifesteal: 0, eliteDamage: 0, burnExplosion: false, extraChains: 0, noPierceFalloff: false, lowHealthLifesteal: false, doubleRewardChance: 0, eliteKillBuff: false })
+const emptySetBonuses = (): SetBonuses => ({ damage: 0, fireRate: 0, pierce: 0, fireDamage: 0, shockChance: 0, statusPower: 0, goldGain: 0, maxHp: 0, lifesteal: 0, eliteDamage: 0, burnExplosion: false, extraChains: 0, noPierceFalloff: false, lowHealthLifesteal: false, doubleRewardChance: 0, eliteKillBuff: false })
 
 export function summarizeSets(equipped: Attachment[]): SetSummary[] {
   const counts = equipped.reduce<Partial<Record<EquipmentSetKey, number>>>((result, item) => {
@@ -146,10 +148,14 @@ export function summarizeSets(equipped: Attachment[]): SetSummary[] {
   })
 }
 
-export function combinedSetBonuses(equipped: Attachment[]): SetBonuses {
-  return summarizeSets(equipped).reduce((total, set) => {
+export function combinedSetBonuses(equipped: Attachment[], amplifyDominant = false): SetBonuses {
+  const summaries = summarizeSets(equipped)
+  const dominant = amplifyDominant
+    ? summaries.filter((set) => set.count >= 2).sort((a, b) => b.count - a.count)[0]
+    : undefined
+  return summaries.reduce((total, set) => {
     for (const [key, value] of Object.entries(set.bonuses) as Array<[keyof SetBonuses, number | boolean]>) {
-      if (typeof value === 'number') (total[key] as number) += value
+      if (typeof value === 'number') (total[key] as number) += value * (set.key === dominant?.key ? 1.5 : 1)
       else (total[key] as boolean) ||= value
     }
     return total
@@ -257,9 +263,9 @@ export function createDailyTasks(): GameTask[] {
 export function createWeeklyTasks(): GameTask[] {
   return [
     { id: 'weekly-clear', period: 'weekly', label: '推进 20 个关卡', event: 'clear', target: 20, progress: 0, claimed: false, reward: { gold: 1200, alloy: 8, parts: 12 } },
-    { id: 'weekly-boss', period: 'weekly', label: '击败 5 个大 Boss', event: 'boss', target: 5, progress: 0, claimed: false, reward: { gold: 800, alloy: 12, parts: 8 } },
+    { id: 'weekly-boss', period: 'weekly', label: '击败 5 个 Boss', event: 'boss', target: 5, progress: 0, claimed: false, reward: { gold: 800, alloy: 12, parts: 8 } },
     { id: 'weekly-rarity', period: 'weekly', label: '获得 1 件史诗以上装备', event: 'rarity', target: 1, progress: 0, claimed: false, reward: { gold: 600, alloy: 6, parts: 16 } },
-    { id: 'weekly-challenge', period: 'weekly', label: '完成 1 次挑战关卡', event: 'challenge', target: 1, progress: 0, claimed: false, reward: { gold: 1000, alloy: 10, parts: 10 } }
+    { id: 'weekly-challenge', period: 'weekly', label: '完成 1 个高危节点', event: 'challenge', target: 1, progress: 0, claimed: false, reward: { gold: 1000, alloy: 10, parts: 10 } }
   ]
 }
 
@@ -294,17 +300,20 @@ export type DropPityState = { bossKills: number; epicMisses: number; legendaryMi
 export const emptyDropPity = (): DropPityState => ({ bossKills: 0, epicMisses: 0, legendaryMisses: 0, mythicShards: 0 })
 export function normalizeDropPity(saved?: Partial<DropPityState>): DropPityState { return { bossKills: Math.max(0, Math.floor(Number(saved?.bossKills) || 0)), epicMisses: Math.max(0, Math.floor(Number(saved?.epicMisses) || 0)), legendaryMisses: Math.max(0, Math.floor(Number(saved?.legendaryMisses) || 0)), mythicShards: Math.max(0, Math.floor(Number(saved?.mythicShards) || 0)) } }
 export function rarityRank(rarity: AttachmentRarity) { return attachmentRarities.indexOf(rarity) }
-export function guaranteedDropRarity(stage: number, pity: DropPityState): AttachmentRarity | null {
-  if (stage >= 7000 && pity.mythicShards >= 10) return '神话'
-  if (stage >= 3000 && pity.legendaryMisses >= 30) return '传说'
-  if (pity.epicMisses >= 100) return '史诗'
+export function guaranteedDropRarity(stage: number, pity: DropPityState, bossDefeated = false): AttachmentRarity | null {
+  if (!bossDefeated) return null
+  if (stage >= 3000 && pity.legendaryMisses >= 29) return '传说'
+  if (pity.epicMisses >= 99) return '史诗'
   if ((pity.bossKills + 1) % 10 === 0) return '稀有'
   return null
 }
+export function attachmentDropCount(rolledDrop: boolean, guaranteedRarity: AttachmentRarity | null) {
+  return rolledDrop || guaranteedRarity ? 1 : 0
+}
 export function recordPityDrop(pity: DropPityState, stage: number, rarity: AttachmentRarity, bossDefeated: boolean) {
+  if (!bossDefeated) return
   if (bossDefeated) pity.bossKills += 1
-  pity.epicMisses = rarityRank(rarity) >= rarityRank('史诗') ? 0 : pity.epicMisses + (bossDefeated ? 1 : 0)
-  pity.legendaryMisses = rarityRank(rarity) >= rarityRank('传说') ? 0 : pity.legendaryMisses + (bossDefeated && stage >= 3000 ? 1 : 0)
+  pity.epicMisses = rarityRank(rarity) >= rarityRank('史诗') ? 0 : pity.epicMisses + 1
+  pity.legendaryMisses = rarityRank(rarity) >= rarityRank('传说') ? 0 : pity.legendaryMisses + (stage >= 3000 ? 1 : 0)
   if (bossDefeated && stage >= 7000 && rarity !== '神话') pity.mythicShards += 1
-  if (rarity === '神话') pity.mythicShards = Math.max(0, pity.mythicShards - 10)
 }

@@ -10,6 +10,45 @@ export type WaveRunRecord = {
   cleared: boolean
 }
 
+export type R4CombatTelemetry = {
+  affixCombinations: Record<string, number>
+  deathZoneHits: number
+  armorRecovered: number
+  coordinationCoverageSeconds: number
+  eliteKillDurations: number[]
+}
+
+export function emptyR4CombatTelemetry(): R4CombatTelemetry {
+  return {
+    affixCombinations: {},
+    deathZoneHits: 0,
+    armorRecovered: 0,
+    coordinationCoverageSeconds: 0,
+    eliteKillDurations: []
+  }
+}
+
+export function recordAffixCombination(telemetry: R4CombatTelemetry, labels: readonly string[]) {
+  if (!labels.length) return
+  const key = [...labels].sort((a, b) => a.localeCompare(b, 'zh-CN')).join(' + ')
+  telemetry.affixCombinations[key] = (telemetry.affixCombinations[key] ?? 0) + 1
+}
+
+export type DurationNode = { stage: number; medianDuration: number }
+
+export function adjacentDurationBreaches(nodes: readonly DurationNode[], minSeconds = 45, maxSeconds = 90) {
+  const ordered = [...nodes].sort((a, b) => a.stage - b.stage)
+  return ordered.slice(0, -1).flatMap((current, index) => {
+    const next = ordered[index + 1]
+    const direction = current.medianDuration < minSeconds && next.medianDuration < minSeconds
+      ? '偏快'
+      : current.medianDuration > maxSeconds && next.medianDuration > maxSeconds
+        ? '偏慢'
+        : null
+    return direction ? [{ fromStage: current.stage, toStage: next.stage, direction }] : []
+  })
+}
+
 export type AttachmentContribution = {
   heavyPierceDamage: number
   criticalTriggers: number

@@ -4,6 +4,7 @@ import {
   attachmentUpgradeCost,
   buildAttachmentComparison,
   buildAttachmentDecision,
+  buildAttachmentDimensions,
   combineAffixBonuses,
   normalizeBonus,
   rollSubAffixes
@@ -39,6 +40,13 @@ describe('attachment domain', () => {
     expect(affixes.some((affix) => affix.key === 'damage')).toBe(false)
   })
 
+  it('所有品质都按规则生成固定数量的副词条', () => {
+    const expected = { 普通: 1, 精良: 2, 稀有: 3, 史诗: 4, 传说: 5, 神话: 6 } as const
+    for (const [rarity, count] of Object.entries(expected)) {
+      expect(rollSubAffixes(rarity as Attachment['rarity'], 'damage', () => 0.5)).toHaveLength(count)
+    }
+  })
+
   it('合并词条后保持比较行与推荐结论', () => {
     const current = attachment({ bonuses: { damage: 0.05 } })
     const next = attachment({ rarity: '稀有', bonuses: { damage: 0.1, pierce: 1 } })
@@ -52,6 +60,11 @@ describe('attachment domain', () => {
       { label: '穿透', current: '无穿透', next: '穿透 +1' }
     ])
     expect(buildAttachmentDecision(current, next)).toMatchObject({ label: '输出提升', actionLabel: '推荐装备', tone: 'offense' })
+    expect(buildAttachmentDimensions(current, next)).toEqual([
+      { key: 'offense', label: '输出', current: 5, next: 26, delta: 21, summary: '伤害、射速、暴击与穿透' },
+      { key: 'survival', label: '生存', current: 0, next: 0, delta: 0, summary: '最大生命与移动容错' },
+      { key: 'utility', label: '功能', current: 0, next: 0, delta: 0, summary: '拾取范围与经验收益' }
+    ])
   })
 
   it('保持品质强化上限和强化成本', () => {

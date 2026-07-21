@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStrategyInsights, dpsGapPercent, durationVerdict } from '../../shared/game/telemetry'
+import { adjacentDurationBreaches, buildStrategyInsights, dpsGapPercent, durationVerdict, emptyR4CombatTelemetry, recordAffixCombination } from '../../shared/game/telemetry'
 
 describe('战斗调参遥测', () => {
   it('标记 45–90 秒目标与峰均 DPS 差', () => {
@@ -17,5 +17,24 @@ describe('战斗调参遥测', () => {
     expect(insights).toHaveLength(3)
     expect(insights.every((insight) => !insight.effective)).toBe(true)
     expect(insights[0].fit).toContain('重装兵')
+  })
+
+  it('按无序组合归并 R4 精英词缀计数', () => {
+    const telemetry = emptyR4CombatTelemetry()
+    recordAffixCombination(telemetry, ['爆裂', '再生'])
+    recordAffixCombination(telemetry, ['再生', '爆裂'])
+    expect(telemetry.affixCombinations).toEqual({ '爆裂 + 再生': 2 })
+  })
+
+  it('只有两个相邻节点同方向越界才给出全局曲线调参证据', () => {
+    expect(adjacentDurationBreaches([
+      { stage: 100, medianDuration: 62 },
+      { stage: 150, medianDuration: 92 },
+      { stage: 200, medianDuration: 88 }
+    ])).toEqual([])
+    expect(adjacentDurationBreaches([
+      { stage: 250, medianDuration: 91 },
+      { stage: 300, medianDuration: 94 }
+    ])).toEqual([{ fromStage: 250, toStage: 300, direction: '偏慢' }])
   })
 })

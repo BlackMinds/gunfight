@@ -1,4 +1,5 @@
 import type { EnemyKind } from './formulas'
+import { r4WavePressureForStage } from './r4'
 
 export type WavePhase = 'warmup' | 'ranged-pressure' | 'charge-burst' | 'armor-check' | 'climax'
 
@@ -146,6 +147,7 @@ export const levelTuning = {
 export function createWavePlan(stage: number): WaveDefinition[] {
   const growth = levelTuning.stageGrowth
   const pressureBonus = Math.min(growth.maxCountBonus, Math.floor(Math.max(0, stage - 1) / growth.countBonusEveryStages))
+  const r4Pressure = r4WavePressureForStage(stage)
   const eliteStage = stage % levelTuning.elite.everyStages === 0
   const bossStage = stage % levelTuning.boss.everyStages === 0
 
@@ -153,7 +155,7 @@ export function createWavePlan(stage: number): WaveDefinition[] {
     index: wave.index,
     phase: wave.phase,
     label: bossStage && wave.bossOnMilestone ? 'Boss 高潮' : wave.label,
-    count: wave.baseCount + pressureBonus,
+    count: wave.baseCount + pressureBonus + r4Pressure.extraEnemies,
     kinds: [...wave.kinds],
     spawnInterval: wave.spawnInterval,
     restAfter: wave.restAfter,
@@ -164,9 +166,10 @@ export function createWavePlan(stage: number): WaveDefinition[] {
 
 export function resolvedSpawnInterval(stage: number, wave: WaveDefinition) {
   const growth = levelTuning.stageGrowth
+  const r4Pressure = r4WavePressureForStage(stage)
   return Math.max(
     growth.minSpawnInterval,
-    wave.spawnInterval - Math.min(growth.maxSpawnIntervalReduction, stage * growth.spawnIntervalReductionPerStage)
+    (wave.spawnInterval - Math.min(growth.maxSpawnIntervalReduction, stage * growth.spawnIntervalReductionPerStage)) * r4Pressure.spawnIntervalMultiplier
   )
 }
 

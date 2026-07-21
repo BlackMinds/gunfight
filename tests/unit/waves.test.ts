@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { r4WavePressureForStage } from '../../shared/game/r4'
 import { countWaveEnemies, createWavePlan, enemyKindForWave, levelTuning, resolvedSpawnInterval } from '../../shared/game/waves'
 
 describe('关卡波次配置', () => {
@@ -32,7 +33,19 @@ describe('关卡波次配置', () => {
     expect(waves[0].restAfter).toBe(levelTuning.waves[0].restAfter)
     expect(levelTuning.elite.multipliers.hp).toBeGreaterThan(1)
     expect(levelTuning.boss.phases).toHaveLength(3)
-    expect(resolvedSpawnInterval(10000, waves[0])).toBeCloseTo(waves[0].spawnInterval - levelTuning.stageGrowth.maxSpawnIntervalReduction)
+    expect(resolvedSpawnInterval(10000, waves[0])).toBeCloseTo((waves[0].spawnInterval - levelTuning.stageGrowth.maxSpawnIntervalReduction) * r4WavePressureForStage(10000).spawnIntervalMultiplier)
     expect(resolvedSpawnInterval(10000, waves[0])).toBeGreaterThanOrEqual(levelTuning.stageGrowth.minSpawnInterval)
+  })
+
+  it('R4 分段增加数量并收紧生成间隔，不改动第 100 关基线', () => {
+    const stage100 = createWavePlan(100)
+    const stage101 = createWavePlan(101)
+    const stage201 = createWavePlan(201)
+    const stage401 = createWavePlan(401)
+    expect(stage101.map((wave) => wave.count)).toEqual(stage100.map((wave) => wave.count))
+    expect(stage201.map((wave) => wave.count)).toEqual(stage100.map((wave) => wave.count + 1))
+    expect(stage401.map((wave) => wave.count)).toEqual(stage100.map((wave) => wave.count + 2))
+    expect(resolvedSpawnInterval(101, stage101[0])).toBeCloseTo(resolvedSpawnInterval(100, stage100[0]))
+    expect(resolvedSpawnInterval(401, stage401[0])).toBeLessThan(resolvedSpawnInterval(100, stage100[0]))
   })
 })

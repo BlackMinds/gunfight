@@ -47,7 +47,7 @@ const starterLoadout = [
   border: 1px solid rgba(229, 184, 75, 0.28);
   background:
     linear-gradient(90deg, rgba(17, 17, 16, 0.86), rgba(17, 17, 16, 0.18)),
-    url('~/assets/images/training-zone.png') center / cover,
+    url('~/assets/images/training-zone.webp') center / cover,
     repeating-linear-gradient(135deg, rgba(229, 184, 75, 0.12) 0 2px, transparent 2px 22px),
     linear-gradient(160deg, #2b2a25, #151512 65%);
   position: relative;

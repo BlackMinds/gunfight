@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { BASE_INVENTORY_CAPACITY, canAffordAttachmentReforge, getAttachmentReforgeCost, resolveAttachmentOverflow } from '../../shared/game/inventory'
-import type { Attachment } from '../../shared/game/weapons'
+import { BASE_INVENTORY_CAPACITY, canAffordAttachmentReforge, getAttachmentRecycleValue, getAttachmentReforgeCost, resolveAttachmentOverflow } from '../../shared/game/inventory'
+import type { Attachment, AttachmentAffix } from '../../shared/game/weapons'
 
 function attachment(index: number, rarity: Attachment['rarity'] = '普通'): Attachment {
   return { id: `item-${index}`, name: `配件 ${index}`, slot: '模块', rarity, effect: '测试' }
@@ -48,5 +48,17 @@ describe('配件重铸成本', () => {
     expect(getAttachmentReforgeCost(item, true)).toEqual({ parts: 7, gold: 110, alloy: 2 })
     expect(canAffordAttachmentReforge({ parts: 7, gold: 110, alloy: 2 }, getAttachmentReforgeCost(item, true))).toBe(true)
     expect(canAffordAttachmentReforge({ parts: 7, gold: 109, alloy: 2 }, getAttachmentReforgeCost(item, true))).toBe(false)
+  })
+
+  it('传说与神话重铸、回收前置成本高于史诗且神话使用高级合金', () => {
+    const affix = (): AttachmentAffix => ({ key: 'damage', label: '伤害', value: 0.03, tier: '副词条' })
+    const legendary: Attachment = { ...attachment(2, '传说'), subAffixes: Array.from({ length: 5 }, affix) }
+    const mythic: Attachment = { ...attachment(3, '神话'), subAffixes: Array.from({ length: 6 }, affix) }
+    expect(getAttachmentReforgeCost(legendary)).toEqual({ parts: 14, gold: 260, alloy: 0 })
+    expect(getAttachmentReforgeCost(legendary, true)).toEqual({ parts: 14, gold: 260, alloy: 5 })
+    expect(getAttachmentReforgeCost(mythic)).toEqual({ parts: 18, gold: 420, alloy: 5 })
+    expect(getAttachmentReforgeCost(mythic, true)).toEqual({ parts: 18, gold: 420, alloy: 13 })
+    expect(getAttachmentRecycleValue(legendary)).toEqual({ gold: 180, parts: 8 })
+    expect(getAttachmentRecycleValue(mythic)).toEqual({ gold: 320, parts: 14 })
   })
 })

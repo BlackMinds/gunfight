@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clockwisePatrolVector, createR3ReplayPlan, createSeededRandom, supportedRareReforges } from '../../shared/game/replay'
+import { R4_REPLAY_STAGES, clockwisePatrolVector, createR3ReplayPlan, createR4ReplayPlan, createSeededRandom, supportedRareReforges } from '../../shared/game/replay'
 
 describe('R3 确定性战斗回放', () => {
   it('生成第 20、40、60、100 关各三局的固定计划', () => {
@@ -31,5 +31,12 @@ describe('R3 确定性战斗回放', () => {
 
   it('按稀有配件 110 金币和 2 合金口径计算可支持重铸次数', () => {
     expect(supportedRareReforges(165, 3)).toEqual({ unlocked: 1.5, locked: 1.5 })
+  })
+
+  it('生成 R4 九节点各三局、共 27 个固定样本', () => {
+    const plan = createR4ReplayPlan()
+    expect(plan).toHaveLength(27)
+    expect([...new Set(plan.map((entry) => entry.stage))]).toEqual(R4_REPLAY_STAGES)
+    for (const stage of R4_REPLAY_STAGES) expect(plan.filter((entry) => entry.stage === stage)).toHaveLength(3)
   })
 })

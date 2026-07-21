@@ -8,7 +8,7 @@
       <button type="button" data-testid="return-to-base" @click="returnToBase">⇥ 退出</button>
     </section>
 
-    <aside class="hud hud-left">
+    <aside class="hud hud-left" :class="{ 'is-upgrade-obscured': upgradeChoices.length && mode === 'battle' }">
       <div class="profile-card">
         <div class="rank-mark" aria-hidden="true">◆</div>
         <div>
@@ -38,15 +38,11 @@
         </div>
         <div class="stat-row">
           <span>弹匣</span>
-          <b>{{ weaponReloadTimer > 0 ? `换弹 ${weaponReloadTimer.toFixed(1)}s` : `${weaponAmmo} / ${weapon.magazineSize}` }}</b>
+          <b>{{ weaponReloadTimer > 0 ? `换弹 ${weaponReloadTimer.toFixed(1)}s` : weaponCharging ? `蓄力 ${weaponChargeTimer.toFixed(1)}s` : `${weaponAmmo} / ${weapon.magazineSize}` }}</b>
         </div>
         <div class="stat-row">
           <span>生命值</span>
           <b>{{ Math.ceil(player.hp) }} / {{ player.maxHp }}</b>
-        </div>
-        <div class="stat-row">
-          <span>击杀数</span>
-          <b>{{ kills }} / {{ targetKills }}</b>
         </div>
         <div class="stat-row">
           <span>经验值</span>
@@ -66,22 +62,23 @@
         <b>{{ Math.round(runStats.currentDps) }}</b>
         <small>仅统计实际造成伤害</small>
       </div>
-      <div class="combat-metrics">
-        <span><small>本关最高</small><b>{{ Math.round(runStats.peakDps) }}</b></span>
-        <span><small>总伤害</small><b>{{ Math.round(runStats.totalDamage) }}</b></span>
-      </div>
     </aside>
 
     <section v-if="mode === 'battle'" class="wave-command" aria-label="波次进度">
       <div class="wave-command__title">
         <span>第 {{ currentWave }} / {{ totalWaves }} 波</span>
-        <b>{{ currentWaveDefinition?.label }}</b>
+        <b>{{ currentWaveDefinition?.label }} · 击杀 {{ Math.min(kills, targetKills) }}/{{ targetKills }} · {{ formatClock(elapsedSeconds) }}</b>
       </div>
       <div class="wave-ticks">
         <i v-for="wave in wavePlan" :key="wave.index" :class="{ active: wave.index === currentWave, cleared: wave.index < currentWave }" />
       </div>
       <small>{{ waveStatusText }}</small>
     </section>
+
+    <p v-if="showMovementHint" class="control-hint" role="status">
+      <span class="desktop-control-hint">WASD / 方向键移动</span>
+      <span class="mobile-control-hint">拖动左下摇杆移动</span>
+    </p>
 
     <section v-if="bossHud.visible" class="boss-hud" aria-label="首领生命">
       <span>高威胁目标 · {{ bossHud.phaseLabel }}</span>
@@ -93,23 +90,24 @@
     <div v-if="damageDirection.life > 0 && mode === 'battle'" class="damage-direction" :style="{ transform: `rotate(${damageDirection.angle}rad)` }" aria-hidden="true">⌃</div>
     <div v-if="killNotice" class="kill-notice">{{ killNotice }}</div>
 
-    <section class="objective-strip">
-      <div>
-        <span class="objective-icon">☠</span>
-        <small>击杀进度</small>
-        <b>{{ Math.min(kills, targetKills) }} / {{ targetKills }}</b>
-      </div>
-      <div>
-        <span class="objective-icon">⏱</span>
-        <small>关卡用时</small>
-        <b>{{ formatClock(elapsedSeconds) }}</b>
-      </div>
-      <div>
-        <span class="objective-icon">⌨</span>
-        <small>移动控制</small>
-        <b>WASD / 方向键</b>
-      </div>
-    </section>
+    <div
+      v-if="mode === 'battle'"
+      ref="joystickRef"
+      class="mobile-joystick"
+      :class="{ active: Math.hypot(touchMovement.x, touchMovement.y) > 0.05 }"
+      data-testid="mobile-joystick"
+      aria-label="触控移动摇杆"
+      role="application"
+      @pointerdown="beginJoystick"
+      @pointermove="moveJoystick"
+      @pointerup="endJoystick"
+      @pointercancel="endJoystick"
+      @lostpointercapture="cancelJoystick"
+    >
+      <span class="mobile-joystick__ring" />
+      <i :style="{ transform: `translate(${touchMovement.x * 38}px, ${touchMovement.y * 38}px)` }" />
+      <small>移动</small>
+    </div>
 
     <section class="skill-bar" aria-label="战术技能">
       <button v-for="skill in skills" :key="skill.key" type="button" :aria-label="`${skill.shortcut}：${skill.name}`" :disabled="skill.cooldown > 0 || mode !== 'battle'" @click="useSkill(skill.key)">
@@ -122,11 +120,18 @@
       </button>
     </section>
 
-    <section v-if="upgradeChoices.length && mode === 'battle'" class="choice-panel">
+    <section
+      v-if="upgradeChoices.length && mode === 'battle'"
+      class="choice-panel"
+      data-testid="upgrade-choice-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="combat-upgrade-title"
+    >
       <p class="panel-kicker">局内升级</p>
-      <h2>选择一项临时强化</h2>
+      <h2 id="combat-upgrade-title">选择一项临时强化</h2>
       <div>
-        <button v-for="(choice, index) in upgradeChoices" :key="choice.name" type="button" @click="chooseUpgrade(choice)">
+        <button v-for="(choice, index) in upgradeChoices" :key="choice.name" type="button" data-testid="upgrade-choice" @click="chooseUpgrade(choice)">
           <kbd>{{ index + 1 }}</kbd>
           <small>{{ choice.tag }}</small>
           <b>{{ choice.name }}</b>
@@ -138,12 +143,54 @@
 </template>
 
 <script setup lang="ts">
+import { onBeforeUnmount, ref } from 'vue'
 import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
 
 const {
   mode, resources, returnToBase, player, hpPercent, damagePreview, kills, targetKills,
   nextLevelExp, runStats, currentWave, totalWaves, currentWaveDefinition, wavePlan,
   waveStatusText, bossHud, damageDirection, killNotice, elapsedSeconds, formatClock,
-  skills, useSkill, upgradeChoices, chooseUpgrade, weapon, weaponAmmo, weaponReloadTimer
+  skills, useSkill, upgradeChoices, chooseUpgrade, weapon, weaponAmmo, weaponReloadTimer, weaponChargeTimer, weaponCharging,
+  showMovementHint, touchMovement, setTouchMovement, clearTouchMovement
 } = useGameCanvasContext()
+
+const joystickRef = ref<HTMLElement | null>(null)
+let joystickPointerId: number | null = null
+
+function updateJoystick(event: PointerEvent) {
+  const rect = joystickRef.value?.getBoundingClientRect()
+  if (!rect) return
+  const dx = event.clientX - (rect.left + rect.width / 2)
+  const dy = event.clientY - (rect.top + rect.height / 2)
+  const radius = Math.max(1, rect.width * 0.34)
+  setTouchMovement(dx / radius, dy / radius)
+}
+
+function beginJoystick(event: PointerEvent) {
+  event.preventDefault()
+  if (joystickPointerId !== null && joystickPointerId !== event.pointerId) return
+  joystickPointerId = event.pointerId
+  joystickRef.value?.setPointerCapture(event.pointerId)
+  updateJoystick(event)
+}
+
+function moveJoystick(event: PointerEvent) {
+  if (joystickPointerId !== event.pointerId) return
+  event.preventDefault()
+  updateJoystick(event)
+}
+
+function endJoystick(event: PointerEvent) {
+  if (joystickPointerId !== event.pointerId) return
+  if (joystickRef.value?.hasPointerCapture(event.pointerId)) joystickRef.value.releasePointerCapture(event.pointerId)
+  joystickPointerId = null
+  clearTouchMovement()
+}
+
+function cancelJoystick() {
+  joystickPointerId = null
+  clearTouchMovement()
+}
+
+onBeforeUnmount(cancelJoystick)
 </script>

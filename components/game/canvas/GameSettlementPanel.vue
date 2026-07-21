@@ -14,6 +14,7 @@
         <article><span>时长目标</span><b>{{ lastRun.stats.durationVerdict }}</b></article>
         <article><span>击杀数量</span><b>{{ lastRun.stats.kills }}</b></article>
         <article><span>受伤次数</span><b>{{ lastRun.stats.hitCount }} 次</b></article>
+        <article><span>吸血恢复</span><b>{{ Math.round(lastRun.stats.lifestealHealing) }}</b></article>
         <article><span>总伤害</span><b>{{ Math.round(lastRun.stats.totalDamage) }}</b></article>
         <article><span>平均 DPS</span><b>{{ Math.round(lastRun.stats.averageDps) }}</b></article>
         <article><span>最高 3 秒 DPS</span><b>{{ Math.round(lastRun.stats.peakDps) }}</b></article>
@@ -56,6 +57,7 @@
           <p>{{ item.slot }} · {{ item.rarity }}</p>
           <h3>{{ item.name }}</h3>
           <strong>{{ item.effect }}</strong>
+          <p v-if="item.specialEffect" class="attachment-special-effect"><b>专属效果</b>{{ item.specialEffect }}</p>
           <div class="equipped-now">
             <span>当前已装备</span>
             <b>{{ currentAttachmentFor(item)?.name ?? '空槽位' }}</b>
@@ -91,10 +93,17 @@
                 <b>{{ row.next }}</b>
               </div>
             </div>
+            <div class="attachment-dimensions compact" aria-label="输出、生存和功能对比">
+              <article v-for="dimension in attachmentDimensionsFor(item)" :key="dimension.key" :class="{ gain: dimension.delta > 0, loss: dimension.delta < 0 }">
+                <span>{{ dimension.label }}</span>
+                <b>{{ dimension.current }} → {{ dimension.next }}</b>
+                <small>{{ dimension.delta > 0 ? '+' : '' }}{{ dimension.delta }}</small>
+              </article>
+            </div>
           </div>
           <div class="loot-card-actions">
             <span :class="{ equipped: isAttachmentEquipped(item) }">{{ settlementLootStatus(item) }}</span>
-            <button type="button" :disabled="!isAttachmentInInventory(item)" @click="equipSettlementAttachment(item)">立即装备</button>
+            <button type="button" :disabled="!isAttachmentInInventory(item) || !canEquipAttachment(item)" @click="equipSettlementAttachment(item)">{{ canEquipAttachment(item) ? '立即装备' : `已达 ${weapon.slotCount} 槽上限` }}</button>
           </div>
         </article>
       </div>
@@ -108,6 +117,7 @@
           <span>{{ choice.desc }}</span>
         </button>
       </div>
+      <p v-if="postBattleChoiceTaken" class="post-battle-choice-notice">本次战后处置已完成，同一结算不可重复选择。</p>
       <div class="settlement-actions">
         <button type="button" @click="returnToBase">返回基地整备</button>
         <button v-if="lastRun?.victory" type="button" class="primary" :disabled="inventoryOverCapacity" @click="advanceAndStart">直接下一关</button>
@@ -122,9 +132,9 @@ import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
 const {
   mode, lastRun, formatPreciseClock, formatEnemyKinds, overflowSalvageNotice,
   lastRunStrategyInsights, attachmentKey, settlementLootTone, settlementLootLabel,
-  currentAttachmentFor, isAttachmentInInventory, attachmentDecisionFor,
+  currentAttachmentFor, isAttachmentInInventory, attachmentDecisionFor, attachmentDimensionsFor,
   isAttachmentEquipped, attachmentComparisonFor, settlementLootStatus,
-  equipSettlementAttachment, settlementEquipNotice, postBattleChoices,
-  choosePostBattle, returnToBase, inventoryOverCapacity, advanceAndStart, startStage
+  canEquipAttachment, weapon, equipSettlementAttachment, settlementEquipNotice, postBattleChoices,
+  choosePostBattle, postBattleChoiceTaken, returnToBase, inventoryOverCapacity, advanceAndStart, startStage
 } = useGameCanvasContext()
 </script>

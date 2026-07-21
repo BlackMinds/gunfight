@@ -1,5 +1,5 @@
 import { CURRENT_SAVE_VERSION } from '../../shared/game/save'
-import { attachmentPool, attachmentSlots, type Attachment, type AttachmentAffix, type AttachmentBonusKey, type AttachmentRarity, type AttachmentSlot } from '../../shared/game/weapons'
+import { attachmentPool, attachmentSlots, type Attachment, type AttachmentAffix, type AttachmentBonusKey, type AttachmentRarity, type AttachmentSlot, type WeaponProgressMap } from '../../shared/game/weapons'
 
 export const GAME_SAVE_KEY = 'gunfight-growth-save-v1'
 export const R2_BALANCE_STAGES = [20, 40, 60, 100] as const
@@ -14,6 +14,8 @@ export type GameSaveFixture = {
   equipped: Attachment[]
   inventory: Attachment[]
   acquireOrder: Record<string, number>
+  selectedWeaponKey?: string
+  weaponProgress?: Partial<WeaponProgressMap>
 }
 
 const affixLabels: Record<AttachmentBonusKey, string> = {
@@ -113,10 +115,12 @@ export function createR2BalanceSave(stage: (typeof R2_BALANCE_STAGES)[number]): 
     highestCleared: stage - 1,
     resources: { gold: 2000, alloy: 50, parts: 200 },
     base: { weaponLevel: 0, armorLevel: 0, magnetLevel: 0 },
-    player: { level: 8, exp: 0, hp: 222 },
+    player: { level: 18, exp: 0, hp: 342 },
     equipped: R2_FIXED_LOADOUT.map((item) => ({ ...item })),
     inventory: [],
-    acquireOrder: {}
+    acquireOrder: {},
+    selectedWeaponKey: 'light-machine-gun',
+    weaponProgress: { 'light-machine-gun': { level: 1, stars: 0 } }
   }
 }
 
