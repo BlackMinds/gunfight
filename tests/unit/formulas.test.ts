@@ -3,7 +3,7 @@ import { ENEMY_STAT_GROWTH_CAP, PUBLISHED_STAGE_CAP, STAGE_REWARD_CAPS, getDiffi
 
 describe('game formulas', () => {
   it('正式发布关卡上限与当前验收范围一致', () => {
-    expect(PUBLISHED_STAGE_CAP).toBe(100)
+    expect(PUBLISHED_STAGE_CAP).toBe(10000)
   })
 
   it('scales difficulty as stages rise', () => {

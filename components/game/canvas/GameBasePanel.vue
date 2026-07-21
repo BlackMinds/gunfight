@@ -48,7 +48,7 @@
           <button type="button" @click="adjustStage(1)">+1</button>
           <button type="button" @click="adjustStage(10)">+10</button>
         </div>
-        <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · 101～500 为 R4、501～10000 为 R5 开发验收内容；正式版本仍封顶第 100 关</p>
+        <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · R4 / R5 发布验收已完成，正式版本上限为第 10000 关</p>
         <div class="reward-preview" aria-label="奖励预览">
           <article>
             <span>预计金币</span>

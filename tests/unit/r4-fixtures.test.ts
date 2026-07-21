@@ -3,8 +3,8 @@ import { PUBLISHED_STAGE_CAP } from '../../shared/game/formulas'
 import { R4_BALANCE_STAGES, R4_BUILD_PROFILES, createR4BalanceSave, getR4BuildProfile } from '../fixtures/r4'
 
 describe('R4 分段固定构筑夹具', () => {
-  it('四段使用独立战力预算且正式上限仍为 100', () => {
-    expect(PUBLISHED_STAGE_CAP).toBe(100)
+  it('四段使用独立战力预算且正式上限已覆盖 R5 终点', () => {
+    expect(PUBLISHED_STAGE_CAP).toBe(10000)
     expect(R4_BUILD_PROFILES.map((profile) => profile.expectedDps)).toEqual([430, 560, 720, 900])
     expect(new Set(R4_BUILD_PROFILES.map((profile) => `${profile.weaponLevel}-${profile.weaponStars}`)).size).toBe(4)
   })

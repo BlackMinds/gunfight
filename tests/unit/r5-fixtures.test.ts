@@ -3,8 +3,8 @@ import { PUBLISHED_STAGE_CAP } from '../../shared/game/formulas'
 import { R5_BALANCE_STAGES, R5_BUILD_PROFILES, createR5BalanceSave, getR5BuildProfile } from '../fixtures/r5'
 
 describe('R5 八节点固定构筑夹具', () => {
-  it('覆盖全部自动验收节点且正式上限不变', () => {
-    expect(PUBLISHED_STAGE_CAP).toBe(100)
+  it('覆盖全部自动验收节点且正式上限已通过发布验收', () => {
+    expect(PUBLISHED_STAGE_CAP).toBe(10000)
     expect(R5_BUILD_PROFILES.map((profile) => profile.stage)).toEqual([...R5_BALANCE_STAGES])
     expect(R5_BUILD_PROFILES.map((profile) => profile.expectedDps)).toEqual([900, 1400, 1900, 2500, 3500, 5200, 7200, 9500])
   })

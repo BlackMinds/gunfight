@@ -3,7 +3,7 @@ import { r5EnemyMultipliersForStage, r5RewardBudgetForStage } from './r5'
 
 export type EnemyKind = 'grunt' | 'ranged' | 'fast' | 'heavy' | 'bomber'
 
-export const PUBLISHED_STAGE_CAP = 100
+export const PUBLISHED_STAGE_CAP = 10000
 
 // 在玩家长期伤害成长落地前，避免敌人生命/伤害继续指数上扬；奖励与波次压力仍按真实关卡计算。
 export const ENEMY_STAT_GROWTH_CAP = 20

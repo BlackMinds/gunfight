@@ -2608,9 +2608,12 @@
   left: 50%;
   width: min(900px, calc(100vw - 40px));
   max-height: none;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   transform: translateX(-50%);
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: none;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 8px;
   padding: 16px 18px;
 }

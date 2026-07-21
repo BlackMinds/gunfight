@@ -18,8 +18,8 @@ import { createR5ReplayPlan, R5_REPLAY_STAGES } from '../../shared/game/replay'
 import { createWavePlan, levelTuning, resolvedBossPhases } from '../../shared/game/waves'
 
 describe('R5 第 501～10000 关配置', () => {
-  it('保持正式上限并让第 500/501 关曲线连续', () => {
-    expect(PUBLISHED_STAGE_CAP).toBe(100)
+  it('正式上限覆盖终局并让第 500/501 关曲线连续', () => {
+    expect(PUBLISHED_STAGE_CAP).toBe(10000)
     expect(getR5StageBand(500)).toBeNull()
     expect(getR5StageBand(501)?.label).toBe('军工封锁')
     expect(r5EnemyMultipliersForStage(500)).toEqual({ hp: 1, damage: 1, speed: 1 })
