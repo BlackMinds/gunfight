@@ -33,7 +33,8 @@ import {
   type AttachmentDimension,
   type CompareRow
 } from '~/shared/game/attachment-domain'
-import { getStageMeta, PUBLISHED_STAGE_CAP, rewardForStage, scaleEnemyStats, type EnemyKind } from '~/shared/game/formulas'
+import { getStageMeta, rewardForStage, scaleEnemyStats, type EnemyKind } from '~/shared/game/formulas'
+import { canAdvanceStage, maxSelectableStageFor, nextStageAfterVictory, restoreProgression } from '~/shared/game/progression'
 import { BASE_INVENTORY_CAPACITY, canAffordAttachmentReforge, getAttachmentRecycleValue, getAttachmentReforgeCost, resolveAttachmentOverflow, type AttachmentReforgeCost } from '~/shared/game/inventory'
 import { enemyKindLabels, getEnemyPreview, getStageTypeLabel } from '~/shared/game/presentation'
 import { eliteAffixCombatModifiers, eliteAffixLabels, r4EnemyMechanicsForStage, r4Tuning, resolveEliteAffixes, type EliteAffixId } from '~/shared/game/r4'
@@ -418,7 +419,8 @@ const replayRuntime = {
 const stageMeta = computed(() => getStageMeta(stage.value))
 const stageLabel = computed(() => stage.value.toString().padStart(4, '0'))
 const debugStageSelection = import.meta.dev
-const maxSelectableStage = computed(() => debugStageSelection ? 10000 : Math.min(PUBLISHED_STAGE_CAP, highestCleared.value + 1))
+const maxSelectableStage = computed(() => maxSelectableStageFor(highestCleared.value, debugStageSelection))
+const canAdvanceToNextStage = computed(() => canAdvanceStage(stage.value, Boolean(lastRun.value?.victory), debugStageSelection))
 const wavePlan = computed(() => createWavePlan(stage.value))
 const totalWaves = computed(() => wavePlan.value.length)
 const currentWaveDefinition = computed(() => wavePlan.value[currentWave.value - 1])
@@ -1212,8 +1214,9 @@ function saveGame() {
 }
 
 function applySaveData(saved: Partial<SaveData>) {
-  highestCleared.value = clamp(Math.round(Number(saved.highestCleared) || Math.max(0, (Number(saved.stage) || 1) - 1)), 0, debugStageSelection ? 10000 : PUBLISHED_STAGE_CAP)
-  stage.value = clamp(Math.round(Number(saved.stage) || 1), 1, debugStageSelection ? 10000 : Math.min(PUBLISHED_STAGE_CAP, highestCleared.value + 1))
+  const restoredProgression = restoreProgression(saved, debugStageSelection)
+  highestCleared.value = restoredProgression.highestCleared
+  stage.value = restoredProgression.stage
   stageDraft.value = stage.value
   Object.assign(resources, { gold: saved.resources?.gold ?? 80, alloy: saved.resources?.alloy ?? 3, parts: saved.resources?.parts ?? 0 })
   Object.assign(base, emptyLegacyBase())
@@ -3152,10 +3155,9 @@ function advanceAndStart() {
     bannerText.value = '背包超出容量，请先返回基地整理受保护配件'
     return
   }
-  if (lastRun.value?.victory) {
-    stage.value = clamp(stage.value + 1, 1, debugStageSelection ? 10000 : PUBLISHED_STAGE_CAP)
-    stageDraft.value = stage.value
-  }
+  if (!canAdvanceToNextStage.value) return
+  stage.value = nextStageAfterVictory(stage.value, true, debugStageSelection)
+  stageDraft.value = stage.value
   lastRun.value = null
   settlementEquipNotice.value = null
   overflowSalvageNotice.value = null
@@ -3269,7 +3271,7 @@ onBeforeUnmount(() => {
     formatEnemyKinds, lastRunStrategyInsights, settlementLootTone, settlementLootLabel,
     isAttachmentInInventory, isAttachmentEquipped, settlementLootStatus,
     equipSettlementAttachment, settlementEquipNotice, postBattleChoices,
-    choosePostBattle, postBattleChoiceTaken, advanceAndStart, weaponOptions, equipWeapon, weaponAmmo, weaponReloadTimer, weaponChargeTimer, weaponCharging,
+    choosePostBattle, postBattleChoiceTaken, canAdvanceToNextStage, advanceAndStart, weaponOptions, equipWeapon, weaponAmmo, weaponReloadTimer, weaponChargeTimer, weaponCharging,
     currentWeaponProgress, currentWeaponUpgradeCost, currentWeaponStarCost, upgradeCurrentWeapon, starCurrentWeapon,
     talentCards,
     talentPointsTotal, talentPointsSpent, talentPointsAvailable, upgradeTalent,

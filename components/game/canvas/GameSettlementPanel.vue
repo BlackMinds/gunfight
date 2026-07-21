@@ -120,7 +120,8 @@
       <p v-if="postBattleChoiceTaken" class="post-battle-choice-notice">本次战后处置已完成，同一结算不可重复选择。</p>
       <div class="settlement-actions">
         <button type="button" @click="returnToBase">返回基地整备</button>
-        <button v-if="lastRun?.victory" type="button" class="primary" :disabled="inventoryOverCapacity" @click="advanceAndStart">直接下一关</button>
+        <button v-if="lastRun?.victory && canAdvanceToNextStage" type="button" class="primary" data-testid="advance-next-stage" :disabled="inventoryOverCapacity" @click="advanceAndStart">直接下一关</button>
+        <button v-else-if="lastRun?.victory" type="button" class="primary" data-testid="stage-cap-reached" disabled>已达第 {{ PUBLISHED_STAGE_CAP }} 关上限</button>
         <button v-else type="button" class="primary" @click="startStage">重新挑战</button>
       </div>
     </section>
@@ -128,6 +129,7 @@
 
 <script setup lang="ts">
 import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
+import { PUBLISHED_STAGE_CAP } from '~/shared/game/formulas'
 
 const {
   mode, lastRun, formatPreciseClock, formatEnemyKinds, overflowSalvageNotice,
@@ -135,6 +137,6 @@ const {
   currentAttachmentFor, isAttachmentInInventory, attachmentDecisionFor, attachmentDimensionsFor,
   isAttachmentEquipped, attachmentComparisonFor, settlementLootStatus,
   canEquipAttachment, weapon, equipSettlementAttachment, settlementEquipNotice, postBattleChoices,
-  choosePostBattle, postBattleChoiceTaken, returnToBase, inventoryOverCapacity, advanceAndStart, startStage
+  choosePostBattle, postBattleChoiceTaken, returnToBase, inventoryOverCapacity, canAdvanceToNextStage, advanceAndStart, startStage
 } = useGameCanvasContext()
 </script>
