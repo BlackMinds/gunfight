@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { r4WavePressureForStage } from '../../shared/game/r4'
+import { r5WavePressureForStage } from '../../shared/game/r5'
 import { countWaveEnemies, createWavePlan, enemyKindForWave, levelTuning, resolvedSpawnInterval } from '../../shared/game/waves'
 
 describe('关卡波次配置', () => {
@@ -33,7 +34,7 @@ describe('关卡波次配置', () => {
     expect(waves[0].restAfter).toBe(levelTuning.waves[0].restAfter)
     expect(levelTuning.elite.multipliers.hp).toBeGreaterThan(1)
     expect(levelTuning.boss.phases).toHaveLength(3)
-    expect(resolvedSpawnInterval(10000, waves[0])).toBeCloseTo((waves[0].spawnInterval - levelTuning.stageGrowth.maxSpawnIntervalReduction) * r4WavePressureForStage(10000).spawnIntervalMultiplier)
+    expect(resolvedSpawnInterval(10000, waves[0])).toBeCloseTo((waves[0].spawnInterval - levelTuning.stageGrowth.maxSpawnIntervalReduction) * r5WavePressureForStage(10000).spawnIntervalMultiplier)
     expect(resolvedSpawnInterval(10000, waves[0])).toBeGreaterThanOrEqual(levelTuning.stageGrowth.minSpawnInterval)
   })
 

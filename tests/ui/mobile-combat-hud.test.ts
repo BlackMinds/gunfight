@@ -36,6 +36,7 @@ function createContext() {
     currentWaveDefinition: ref({ label: '测试波次' }),
     wavePlan: ref([]),
     waveStatusText: ref('交战中'),
+    nextEnemyPreview: ref({ stageBandLabel: '终局战争', eliteAffixCount: 4, bossPhaseCount: 5 }),
     bossHud: reactive({ visible: false, phaseLabel: '', label: '', hpPercent: 0, hp: 0, maxHp: 0 }),
     damageDirection: reactive({ life: 0, angle: 0 }),
     killNotice: ref(''),
@@ -83,6 +84,14 @@ beforeEach(() => {
 })
 
 describe('移动端战斗 HUD', () => {
+  it('以单行摘要呈现高关战区、词缀数和 Boss 阶段', async () => {
+    const root = await mountHud()
+    const intel = root.querySelector<HTMLElement>('[data-testid="combat-stage-intel"]')
+    expect(intel?.textContent).toContain('终局战争')
+    expect(intel?.textContent).toContain('4 词缀')
+    expect(intel?.textContent).toContain('Boss 5 阶段')
+  })
+
   it('升级选择出现时让角色 HUD 退出点击层，并将完整卡片作为模态选择项', async () => {
     const root = await mountHud()
     const panel = root.querySelector<HTMLElement>('[data-testid="upgrade-choice-panel"]')

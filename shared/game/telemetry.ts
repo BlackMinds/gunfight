@@ -18,6 +18,14 @@ export type R4CombatTelemetry = {
   eliteKillDurations: number[]
 }
 
+export type R5CombatTelemetry = R4CombatTelemetry & {
+  trackingZoneHits: number
+  shieldLinkSeconds: number
+  commandPulseSeconds: number
+  suppressionHits: number
+  bossPhaseReached: number
+}
+
 export function emptyR4CombatTelemetry(): R4CombatTelemetry {
   return {
     affixCombinations: {},
@@ -25,6 +33,17 @@ export function emptyR4CombatTelemetry(): R4CombatTelemetry {
     armorRecovered: 0,
     coordinationCoverageSeconds: 0,
     eliteKillDurations: []
+  }
+}
+
+export function emptyR5CombatTelemetry(): R5CombatTelemetry {
+  return {
+    ...emptyR4CombatTelemetry(),
+    trackingZoneHits: 0,
+    shieldLinkSeconds: 0,
+    commandPulseSeconds: 0,
+    suppressionHits: 0,
+    bossPhaseReached: 0
   }
 }
 

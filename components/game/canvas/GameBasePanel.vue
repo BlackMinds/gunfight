@@ -32,7 +32,10 @@
             <span>下一关敌情</span>
             <b>{{ nextEnemyPreview.label }}</b>
             <small>生命 {{ nextEnemyPreview.hp }} · 伤害 {{ nextEnemyPreview.damage }} · {{ stageType }}</small>
-            <small v-if="nextEnemyPreview.mechanicLabels.length">R4 机制：{{ nextEnemyPreview.mechanicLabels.join(' / ') }}</small>
+            <small v-if="nextEnemyPreview.stageBandLabel" class="r5-stage-intel" data-testid="r5-stage-intel">
+              R5 战区：{{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · Boss {{ nextEnemyPreview.bossPhaseCount }} 阶段 · 建议 DPS {{ nextEnemyPreview.expectedDps }} / 生命 {{ nextEnemyPreview.expectedMaxHp }}
+            </small>
+            <small v-if="nextEnemyPreview.mechanicLabels.length">累计机制：{{ nextEnemyPreview.mechanicLabels.join(' / ') }}</small>
           </article>
         </div>
         <div class="stage-picker" aria-label="关卡选择">
@@ -40,12 +43,12 @@
           <button type="button" @click="adjustStage(-1)">-1</button>
           <label>
             <span>目标关卡</span>
-            <input v-model.number="stageDraft" type="number" min="1" :max="maxSelectableStage" @change="commitStageDraft" />
+            <input v-model.number="stageDraft" type="number" min="1" :max="maxSelectableStage" @change="commitStageDraft" @blur="commitStageDraft" @keyup.enter="commitStageDraft" />
           </label>
           <button type="button" @click="adjustStage(1)">+1</button>
           <button type="button" @click="adjustStage(10)">+10</button>
         </div>
-        <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · 第 101～500 关为 R4 验收内容，正式版本仍封顶第 100 关；第 501～10000 关尚未完成内容验证</p>
+        <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · 101～500 为 R4、501～10000 为 R5 开发验收内容；正式版本仍封顶第 100 关</p>
         <div class="reward-preview" aria-label="奖励预览">
           <article>
             <span>预计金币</span>

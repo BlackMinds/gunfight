@@ -10,6 +10,7 @@
     </section>
     <output data-testid="r3-replay-results" hidden>{{ replayResultsJson }}</output>
     <output data-testid="r4-replay-results" hidden>{{ replayResultsJson }}</output>
+    <output data-testid="r5-replay-results" hidden>{{ replayResultsJson }}</output>
 
     <GameCombatHud />
     <GameBasePanel />

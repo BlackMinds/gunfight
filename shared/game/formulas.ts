@@ -1,4 +1,5 @@
 import { r4EnemyMultipliersForStage } from './r4'
+import { r5EnemyMultipliersForStage, r5RewardBudgetForStage } from './r5'
 
 export type EnemyKind = 'grunt' | 'ranged' | 'fast' | 'heavy' | 'bomber'
 
@@ -43,13 +44,14 @@ export function scaleEnemyStats(level: number, kind: EnemyKind) {
   const balancedLevel = Math.min(level, ENEMY_STAT_GROWTH_CAP)
   const multipliers = getDifficultyMultipliers(balancedLevel)
   const r4Multipliers = r4EnemyMultipliersForStage(level)
+  const r5Multipliers = r5EnemyMultipliersForStage(level)
   const stageRate = 1 + Math.floor((balancedLevel - 1) / 1000) * 0.18
 
   return {
     label: String(base.label),
-    hp: Number(base.hp) * multipliers.hpMultiplier * Number(base.hpRate) * stageRate * r4Multipliers.hp,
-    damage: Number(base.damage) * multipliers.damageMultiplier * Number(base.damageRate) * stageRate * r4Multipliers.damage,
-    speed: Number(base.speed) * multipliers.speedMultiplier * Number(base.speedRate) * r4Multipliers.speed
+    hp: Number(base.hp) * multipliers.hpMultiplier * Number(base.hpRate) * stageRate * r4Multipliers.hp * r5Multipliers.hp,
+    damage: Number(base.damage) * multipliers.damageMultiplier * Number(base.damageRate) * stageRate * r4Multipliers.damage * r5Multipliers.damage,
+    speed: Number(base.speed) * multipliers.speedMultiplier * Number(base.speedRate) * r4Multipliers.speed * r5Multipliers.speed
   }
 }
 
@@ -57,12 +59,14 @@ export function rewardForStage(level: number, kills: number) {
   const { rewardMultiplier } = getDifficultyMultipliers(level)
   const rawGold = Math.round((18 + kills * 2.4) * rewardMultiplier)
   const rawAlloy = Math.max(1, Math.floor(level / 5) + Math.floor(kills / 18))
-  const parts = level % 5 === 0 ? 3 : 1
+  const r5Budget = r5RewardBudgetForStage(level)
+  const isR5 = level >= 501
+  const parts = isR5 ? (level % 25 === 0 ? r5Budget.resourceParts : r5Budget.parts) : level % 5 === 0 ? 3 : 1
   return {
-    gold: Math.min(STAGE_REWARD_CAPS.gold, rawGold),
+    gold: Math.min(isR5 ? r5Budget.gold : STAGE_REWARD_CAPS.gold, rawGold),
     exp: Math.round((12 + kills * 1.6) * rewardMultiplier),
-    alloy: Math.min(STAGE_REWARD_CAPS.alloy, rawAlloy),
-    parts: parts + (level % 25 === 0 ? 3 : 0)
+    alloy: Math.min(isR5 ? r5Budget.alloy : STAGE_REWARD_CAPS.alloy, rawAlloy),
+    parts: isR5 ? parts : parts + (level % 25 === 0 ? 3 : 0)
   }
 }
 

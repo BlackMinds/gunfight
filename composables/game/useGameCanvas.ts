@@ -37,10 +37,11 @@ import { getStageMeta, PUBLISHED_STAGE_CAP, rewardForStage, scaleEnemyStats, typ
 import { BASE_INVENTORY_CAPACITY, canAffordAttachmentReforge, getAttachmentRecycleValue, getAttachmentReforgeCost, resolveAttachmentOverflow, type AttachmentReforgeCost } from '~/shared/game/inventory'
 import { enemyKindLabels, getEnemyPreview, getStageTypeLabel } from '~/shared/game/presentation'
 import { eliteAffixCombatModifiers, eliteAffixLabels, r4EnemyMechanicsForStage, r4Tuning, resolveEliteAffixes, type EliteAffixId } from '~/shared/game/r4'
+import { getR5StageBand, r5BossHpMultiplierForStage, r5CampaignGrowthForHighestCleared, r5EliteAffixColor, r5EliteAffixCombatModifiers, r5EliteAffixLabels, r5EnemyMechanicsForStage, r5ShieldLinkPairEligible, r5Tuning, resolveR5EliteAffixes, type R5EliteAffixId } from '~/shared/game/r5'
 import { CURRENT_SAVE_VERSION, emptyLegacyBase, migrateAttachmentIdentity } from '~/shared/game/save'
-import { R3_REPLAY_FIXED_DELTA, clockwisePatrolVector, createR3ReplayPlan, createR4ReplayPlan, createSeededRandom, supportedRareReforges, type R3ReplayPlanEntry, type R3ReplaySample, type R4ReplayPlanEntry, type R4ReplaySample } from '~/shared/game/replay'
-import { countWaveEnemies, createWavePlan, enemyKindForWave, levelTuning, resolvedSpawnInterval } from '~/shared/game/waves'
-import { buildStrategyInsights, dpsGapPercent, durationVerdict, emptyR4CombatTelemetry, recordAffixCombination, type AttachmentContribution, type R4CombatTelemetry, type WaveRunRecord } from '~/shared/game/telemetry'
+import { R3_REPLAY_FIXED_DELTA, clockwisePatrolVector, createR3ReplayPlan, createR4ReplayPlan, createR5ReplayPlan, createSeededRandom, supportedRareReforges, type R3ReplayPlanEntry, type R3ReplaySample, type R4ReplayPlanEntry, type R4ReplaySample, type R5ReplayPlanEntry, type R5ReplaySample } from '~/shared/game/replay'
+import { countWaveEnemies, createWavePlan, enemyKindForWave, levelTuning, resolvedBossPhases, resolvedSpawnInterval } from '~/shared/game/waves'
+import { buildStrategyInsights, dpsGapPercent, durationVerdict, emptyR5CombatTelemetry, recordAffixCombination, type AttachmentContribution, type R5CombatTelemetry, type WaveRunRecord } from '~/shared/game/telemetry'
 import {
   applyElementStatus,
   attachmentDropCount,
@@ -94,7 +95,7 @@ type Enemy = Vec & {
   boss: boolean
   kind: EnemyKind
   label: string
-  affixes: EliteAffixId[]
+  affixes: R5EliteAffixId[]
   attackTimer: number
   aimTime: number
   aimAngle: number
@@ -112,8 +113,8 @@ type Enemy = Vec & {
   spawnedAt: number
 }
 type Bullet = Vec & { vx: number; vy: number; damage: number; life: number; pierce: number; critical: boolean; element: WeaponElement; statusChance: number; explosionRadius: number; chainCount: number; knockback: number; hitEnemyIds: Set<number> }
-type EnemyProjectile = Vec & { vx: number; vy: number; damage: number; life: number; radius: number; sourceKind: EnemyKind | 'boss' }
-type EnemyHazard = Vec & { radius: number; warningSeconds: number; damage: number; sourceKind: EnemyKind }
+type EnemyProjectile = Vec & { vx: number; vy: number; damage: number; life: number; radius: number; sourceKind: EnemyKind | 'boss'; sourceAffixes: R5EliteAffixId[] }
+type EnemyHazard = Vec & { radius: number; warningSeconds: number; totalWarningSeconds: number; damage: number; sourceKind: EnemyKind; tracking: boolean }
 type Drop = Vec & { value: number; radius: number; kind: 'gold' | 'exp' }
 type Afterimage = Vec & { angle: number; life: number; maxLife: number; size: number }
 type StageReward = ReturnType<typeof rewardForStage>
@@ -139,7 +140,7 @@ type RunStatsSnapshot = {
   durationVerdict: string
   contribution: AttachmentContribution
   loadoutBonuses: EquippedBonusTotals
-  r4Telemetry: R4CombatTelemetry
+  r4Telemetry: R5CombatTelemetry
 }
 type SkillKey = 'dash' | 'overload' | 'pulse'
 type EquippedBonusTotals = Record<AttachmentBonusKey, number>
@@ -173,8 +174,8 @@ type SaveData = {
 }
 
 type ReplayBatchOptions = { speed?: number; baseSeed?: number }
-type ReplayPlanEntry = R3ReplayPlanEntry | R4ReplayPlanEntry
-type ReplaySample = R3ReplaySample | R4ReplaySample
+type ReplayPlanEntry = R3ReplayPlanEntry | R4ReplayPlanEntry | R5ReplayPlanEntry
+type ReplaySample = R3ReplaySample | R4ReplaySample | R5ReplaySample
 type ReplayStatus = {
   status: string
   currentLabel: string
@@ -193,6 +194,11 @@ declare global {
       getStatus: () => ReplayStatus
     }
     __gunfightR4Replay?: {
+      start: (options?: ReplayBatchOptions) => Promise<void>
+      stop: () => void
+      getStatus: () => ReplayStatus
+    }
+    __gunfightR5Replay?: {
       start: (options?: ReplayBatchOptions) => Promise<void>
       stop: () => void
       getStatus: () => ReplayStatus
@@ -243,7 +249,7 @@ const runStats = reactive({
   totalChargeAttempts: 0,
   deathCombination: ''
 })
-const r4Telemetry = reactive<R4CombatTelemetry>(emptyR4CombatTelemetry())
+const r4Telemetry = reactive<R5CombatTelemetry>(emptyR5CombatTelemetry())
 const settlementEquipNotice = ref<{ equipped: string; replaced?: string } | null>(null)
 const overflowSalvageNotice = ref<{ items: Attachment[]; gold: number; parts: number } | null>(null)
 const replayUi = reactive({
@@ -391,7 +397,7 @@ let attachmentAcquireCursor = 0
 let replayPersistenceSuppressed = false
 const replayRuntime = {
   running: false,
-  mode: 'r3' as 'r3' | 'r4',
+  mode: 'r3' as 'r3' | 'r4' | 'r5',
   plan: [] as ReplayPlanEntry[],
   planIndex: 0,
   attempt: 1,
@@ -406,7 +412,7 @@ const replayRuntime = {
   wallStartedAt: 0,
   startResources: { gold: 0, alloy: 0, parts: 0 },
   fixtureFactory: null as null | ((stage: number) => SaveData),
-  buildProfileFactory: null as null | ((stage: number) => { id: string; expectedDps: number })
+  buildProfileFactory: null as null | ((stage: number) => { id: string; expectedDps: number; expectedMaxHp?: number })
 }
 
 const stageMeta = computed(() => getStageMeta(stage.value))
@@ -1131,9 +1137,10 @@ function applyBaseStats() {
   const gear = getEquippedBonuses()
   const talents = talentBonuses(talentLevels)
   const sets = combinedSetBonuses(activeEquippedParts.value, hasSpecialEffect('dominant-set'))
-  player.maxHp = 120 + (player.level - 1) * 12 + gear.maxHp + talents.maxHp + sets.maxHp
+  const campaignGrowth = r5CampaignGrowthForHighestCleared(highestCleared.value)
+  player.maxHp = 120 + (player.level - 1) * 12 + gear.maxHp + talents.maxHp + sets.maxHp + campaignGrowth.maxHpBonus
   player.hp = Math.min(player.maxHp, player.hp)
-  modifiers.damage = 1 + gear.damage + talents.damage + sets.damage
+  modifiers.damage = (1 + gear.damage + talents.damage + sets.damage) * campaignGrowth.damageMultiplier
   modifiers.fireRate = 1 + gear.fireRate + talents.fireRate + sets.fireRate
   modifiers.speed = 1 + gear.speed + talents.speed
   modifiers.pickup = 70 + gear.pickup + talents.pickup
@@ -1553,11 +1560,15 @@ function spawnEnemy(options: { boss?: boolean; elite?: boolean; kind?: EnemyKind
   const kind = forceBoss ? levelTuning.boss.kind : options.kind ?? 'grunt'
   const stats = scaleEnemyStats(stage.value, kind)
   const elite = forceBoss || Boolean(options.elite)
-  const affixes = elite && !forceBoss ? resolveEliteAffixes(stage.value, options.waveIndex ?? currentWave.value, options.spawnIndex ?? 0, kind) : []
-  const affixModifiers = eliteAffixCombatModifiers(affixes)
-  const affixNames = eliteAffixLabels(affixes)
+  const affixes = elite && !forceBoss
+    ? stage.value >= 501
+      ? resolveR5EliteAffixes(stage.value, options.waveIndex ?? currentWave.value, options.spawnIndex ?? 0, kind)
+      : resolveEliteAffixes(stage.value, options.waveIndex ?? currentWave.value, options.spawnIndex ?? 0, kind)
+    : []
+  const affixModifiers = stage.value >= 501 ? r5EliteAffixCombatModifiers(affixes) : eliteAffixCombatModifiers(affixes as EliteAffixId[])
+  const affixNames = stage.value >= 501 ? r5EliteAffixLabels(affixes) : eliteAffixLabels(affixes as EliteAffixId[])
   const multipliers = forceBoss ? levelTuning.boss.multipliers : elite ? levelTuning.elite.multipliers : { hp: 1, damage: 1, speed: 1, radius: 1 }
-  const maxHp = stats.hp * multipliers.hp
+  const maxHp = stats.hp * multipliers.hp * (forceBoss ? r5BossHpMultiplierForStage(stage.value) : 1)
   const armorRatio = forceBoss ? 0 : (kind === 'heavy' ? levelTuning.enemyWarnings.heavyArmorRatio : 0) + affixModifiers.armorRatio
   const maxArmor = maxHp * armorRatio
 
@@ -1686,6 +1697,13 @@ function recordDamage(amount: number) {
   damageEvents.push({ time: stageTimer.value, amount })
 }
 
+function shieldLinkPartner(enemy: Enemy) {
+  return enemies.find((candidate) => candidate.id !== enemy.id
+    && candidate.hp > 0
+    && r5ShieldLinkPairEligible(stage.value, enemy.kind, enemy.affixes, candidate.kind, candidate.affixes)
+    && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= r5Tuning.linkedRange)
+}
+
 function dealDamage(enemy: Enemy, rawDamage: number, critical = false, pierce = 0, element: WeaponElement = '物理', statusChance = 0) {
   let multiplier = 1
   const armoredEnemy = !enemy.boss && enemy.armor > 0
@@ -1711,6 +1729,13 @@ function dealDamage(enemy: Enemy, rawDamage: number, critical = false, pierce = 
     recordAllTaskEvents('critical', Math.round(applied))
   }
   enemy.hp -= applied
+  const linked = shieldLinkPartner(enemy)
+  if (linked) {
+    const shared = Math.min(linked.hp, applied * r5Tuning.linkedDamageShare)
+    linked.hp -= shared
+    linked.damageIdleSeconds = 0
+    recordDamage(shared)
+  }
   enemy.damageIdleSeconds = 0
   const leechRate = (modifiers.lifesteal + (lastStandBuffTimer > 0 ? 0.05 : 0)) * (modifiers.lowHealthLifesteal && player.hp / player.maxHp < 0.3 ? 2 : 1)
   if (leechRate > 0) {
@@ -1822,7 +1847,12 @@ function snapshotRunStats(victory: boolean): RunStatsSnapshot {
       deathZoneHits: r4Telemetry.deathZoneHits,
       armorRecovered: r4Telemetry.armorRecovered,
       coordinationCoverageSeconds: r4Telemetry.coordinationCoverageSeconds,
-      eliteKillDurations: [...r4Telemetry.eliteKillDurations]
+      eliteKillDurations: [...r4Telemetry.eliteKillDurations],
+      trackingZoneHits: r4Telemetry.trackingZoneHits,
+      shieldLinkSeconds: r4Telemetry.shieldLinkSeconds,
+      commandPulseSeconds: r4Telemetry.commandPulseSeconds,
+      suppressionHits: r4Telemetry.suppressionHits,
+      bossPhaseReached: r4Telemetry.bossPhaseReached
     }
   }
 }
@@ -1957,6 +1987,7 @@ function killEnemy(index: number) {
   if (enemy.boss) recordAllTaskEvents('boss')
   if (enemy.elite && (modifiers.eliteKillBuff || modifiers.eliteOverdrive)) eliteSetBuffTimer = 6
   const r4Mechanics = r4EnemyMechanicsForStage(stage.value)
+  const r5Mechanics = r5EnemyMechanicsForStage(stage.value)
   const createsDeathZone = (r4Mechanics.bomberDeathZone && enemy.kind === 'bomber') || enemy.affixes.includes('volatile')
   if (!enemy.boss && !enemy.contactDetonated && createsDeathZone) {
     enemyHazards.push({
@@ -1964,8 +1995,10 @@ function killEnemy(index: number) {
       y: enemy.y,
       radius: r4Tuning.deathZone.radius,
       warningSeconds: r4Tuning.deathZone.warningSeconds,
+      totalWarningSeconds: r4Tuning.deathZone.warningSeconds,
       damage: enemy.damage * r4Tuning.deathZone.damageMultiplier,
-      sourceKind: enemy.kind
+      sourceKind: enemy.kind,
+      tracking: r5Mechanics.trackingDeathZone
     })
   }
   if (modifiers.statusSpread && (enemy.statuses.burnSeconds > 0 || enemy.statuses.shockSeconds > 0 || enemy.statuses.poisonSeconds > 0 || enemy.statuses.chillSeconds > 0 || enemy.statuses.bleedSeconds > 0 || enemy.statuses.armorBreakSeconds > 0 || enemy.statuses.vulnerableSeconds > 0)) {
@@ -2004,7 +2037,7 @@ function killEnemy(index: number) {
   enemies.splice(index, 1)
 }
 
-function damagePlayer(rawDamage: number, sourceX: number, sourceY: number, sourceKind: EnemyKind | 'boss' = 'grunt') {
+function damagePlayer(rawDamage: number, sourceX: number, sourceY: number, sourceKind: EnemyKind | 'boss' = 'grunt', sourceAffixes: readonly R5EliteAffixId[] = []) {
   if (player.invuln > 0) return
   if (modifiers.phaseDodge && player.hp / player.maxHp < 0.3 && phaseDodgeCooldown <= 0) {
     phaseDodgeCooldown = 8
@@ -2022,6 +2055,10 @@ function damagePlayer(rawDamage: number, sourceX: number, sourceY: number, sourc
   fortressShield -= shieldAbsorbed
   const hpDamage = damage - shieldAbsorbed
   player.hp -= hpDamage
+  if (sourceAffixes.includes('suppression')) {
+    for (const skill of skills) skill.cooldown += r5Tuning.suppressionCooldownPenalty
+    r4Telemetry.suppressionHits += 1
+  }
   runStats.hitCount += 1
   runStats.damageTaken += hpDamage
   playerHitFlash = 0.28
@@ -2051,12 +2088,14 @@ function fireEnemyProjectile(enemy: Enemy, spread = 0, lockedAngle?: number, dam
     damage: enemy.damage * (damageMultiplier ?? (enemy.boss ? levelTuning.boss.projectileDamageMultiplier : 0.78)),
     life: 3,
     radius: enemy.boss ? 6 : 4,
-    sourceKind: enemy.boss ? 'boss' : enemy.kind
+    sourceKind: enemy.boss ? 'boss' : enemy.kind,
+    sourceAffixes: [...enemy.affixes]
   })
 }
 
 function fireBossVolley(enemy: Enemy) {
-  const phase = levelTuning.boss.phases[enemy.bossPhase] ?? levelTuning.boss.phases[0]
+  const phases = resolvedBossPhases(stage.value)
+  const phase = phases[enemy.bossPhase] ?? phases[0]
   const middle = (phase.projectileCount - 1) / 2
   for (let index = 0; index < phase.projectileCount; index += 1) {
     fireEnemyProjectile(enemy, (index - middle) * phase.spread, enemy.aimAngle)
@@ -2166,6 +2205,7 @@ function update(delta: number) {
 
   const wave = currentWaveDefinition.value
   const r4Mechanics = r4EnemyMechanicsForStage(stage.value)
+  const r5Mechanics = r5EnemyMechanicsForStage(stage.value)
   if (!waveTransitionPending.value && wave && spawnTimer <= 0 && waveSpawnedCount.value < wave.count) {
     const spawnIndex = waveSpawnedCount.value
     const isBoss = wave.boss && spawnIndex === wave.count - 1
@@ -2217,6 +2257,8 @@ function update(delta: number) {
   }
 
   let coordinationActive = false
+  let shieldLinkActive = false
+  let commandPulseActive = false
   for (const enemy of enemies) {
     const statusTick = tickEnemyStatus(enemy.statuses, delta)
     if (statusTick.dotDamage > 0) {
@@ -2232,8 +2274,13 @@ function update(delta: number) {
     enemy.damageIdleSeconds += delta
     const coordinated = r4Mechanics.eliteCoordination && !enemy.elite && enemies.some((candidate) => candidate.elite && !candidate.boss && candidate.hp > 0 && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= r4Tuning.coordination.range)
     coordinationActive ||= coordinated
-    const affixModifiers = eliteAffixCombatModifiers(enemy.affixes)
-    const actionRate = affixModifiers.actionRateMultiplier * (coordinated ? r4Tuning.coordination.actionRateMultiplier : 1)
+    const hpRatio = enemy.hp / enemy.maxHp
+    const affixModifiers = stage.value >= 501 ? r5EliteAffixCombatModifiers(enemy.affixes, hpRatio) : eliteAffixCombatModifiers(enemy.affixes as EliteAffixId[])
+    const commandPulse = r5Mechanics.commandPulse && !enemy.elite && enemies.some((candidate) => candidate.elite && !candidate.boss && candidate.hp > 0 && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= r4Tuning.coordination.range)
+    const shieldLinked = Boolean(shieldLinkPartner(enemy))
+    shieldLinkActive ||= shieldLinked
+    commandPulseActive ||= commandPulse
+    const actionRate = affixModifiers.actionRateMultiplier * (coordinated ? r4Tuning.coordination.actionRateMultiplier : 1) * (commandPulse ? r5Tuning.commandActionRate : 1)
     enemy.wobble += delta * (enemy.kind === 'fast' ? 8 : 4)
     enemy.attackTimer -= delta * actionRate
     enemy.chargeCooldown -= delta * actionRate
@@ -2295,16 +2342,17 @@ function update(delta: number) {
     }
 
     if (enemy.boss) {
-      const hpRatio = enemy.hp / enemy.maxHp
+      const bossPhases = resolvedBossPhases(stage.value)
       let nextPhase = 0
-      levelTuning.boss.phases.forEach((phase, index) => {
+      bossPhases.forEach((phase, index) => {
         if (hpRatio <= phase.hpThreshold) nextPhase = index
       })
       if (nextPhase !== enemy.bossPhase) {
         enemy.bossPhase = nextPhase
-        announceBanner(`Boss 阶段 ${nextPhase + 1} · ${levelTuning.boss.phases[nextPhase].label}`, 'elite')
+        announceBanner(`Boss 阶段 ${nextPhase + 1} · ${bossPhases[nextPhase].label}`, 'elite')
       }
-      const phase = levelTuning.boss.phases[enemy.bossPhase]
+      r4Telemetry.bossPhaseReached = Math.max(r4Telemetry.bossPhaseReached, enemy.bossPhase + 1)
+      const phase = bossPhases[enemy.bossPhase]
       if (statusTick.canAct && previousAimTime > 0 && enemy.aimTime <= 0) {
         fireBossVolley(enemy)
         enemy.attackTimer = phase.attackInterval
@@ -2323,7 +2371,7 @@ function update(delta: number) {
     enemy.y = clamp(enemy.y + enemy.vy * delta, area.y + enemy.radius, area.y + area.height - enemy.radius)
     enemy.angle = lerpAngle(enemy.angle, Math.atan2(enemy.vy, enemy.vx), 8 * delta)
     if (Math.hypot(enemy.x - player.x, enemy.y - player.y) < enemy.radius + player.radius && player.invuln <= 0) {
-      damagePlayer(enemy.damage * (enemy.chargeTime > 0 ? 1.55 : 1), enemy.x, enemy.y, enemy.boss ? 'boss' : enemy.kind)
+      damagePlayer(enemy.damage * (enemy.chargeTime > 0 ? 1.55 : 1), enemy.x, enemy.y, enemy.boss ? 'boss' : enemy.kind, enemy.affixes)
       if (enemy.kind === 'fast' && enemy.chargeTime > 0) enemy.chargeHit = true
       if (enemy.kind === 'bomber') {
         enemy.contactDetonated = true
@@ -2333,13 +2381,21 @@ function update(delta: number) {
   }
 
   if (coordinationActive) r4Telemetry.coordinationCoverageSeconds += delta
+  if (shieldLinkActive) r4Telemetry.shieldLinkSeconds += delta
+  if (commandPulseActive) r4Telemetry.commandPulseSeconds += delta
 
   for (let i = enemyHazards.length - 1; i >= 0; i--) {
     const hazard = enemyHazards[i]
     hazard.warningSeconds -= delta
+    if (hazard.tracking && hazard.warningSeconds > hazard.totalWarningSeconds * (1 - r5Tuning.trackingRatio)) {
+      const angle = Math.atan2(player.y - hazard.y, player.x - hazard.x)
+      hazard.x += Math.cos(angle) * 42 * delta
+      hazard.y += Math.sin(angle) * 42 * delta
+    }
     if (hazard.warningSeconds > 0) continue
     if (Math.hypot(hazard.x - player.x, hazard.y - player.y) <= hazard.radius + player.radius) {
       r4Telemetry.deathZoneHits += 1
+      if (hazard.tracking) r4Telemetry.trackingZoneHits += 1
       damagePlayer(hazard.damage, hazard.x, hazard.y, hazard.sourceKind)
     }
     hitTexts.push({ x: hazard.x, y: hazard.y, value: '爆区引爆', life: 0.55, maxLife: 0.55, color: '#e36b4f', critical: true })
@@ -2353,7 +2409,7 @@ function update(delta: number) {
     projectile.y += projectile.vy * delta
     projectile.life -= delta
     if (Math.hypot(projectile.x - player.x, projectile.y - player.y) <= projectile.radius + player.radius) {
-      damagePlayer(projectile.damage, projectile.x, projectile.y, projectile.sourceKind)
+      damagePlayer(projectile.damage, projectile.x, projectile.y, projectile.sourceKind, projectile.sourceAffixes)
       enemyProjectiles.splice(i, 1)
     } else if (projectile.life <= 0) {
       enemyProjectiles.splice(i, 1)
@@ -2407,7 +2463,7 @@ function update(delta: number) {
     bossHud.hp = boss.hp
     bossHud.maxHp = boss.maxHp
     bossHud.hpPercent = clamp((boss.hp / boss.maxHp) * 100, 0, 100)
-    bossHud.phaseLabel = levelTuning.boss.phases[boss.bossPhase]?.label ?? ''
+    bossHud.phaseLabel = resolvedBossPhases(stage.value)[boss.bossPhase]?.label ?? ''
   }
   for (let i = drops.length - 1; i >= 0; i--) {
     const drop = drops[i]
@@ -2580,6 +2636,19 @@ function draw() {
 
   ctx.font = compactViewport ? '700 14px Trebuchet MS' : '12px Trebuchet MS'
   ctx.textAlign = 'center'
+  ctx.save()
+  ctx.strokeStyle = 'rgba(105, 174, 232, 0.9)'
+  ctx.lineWidth = compactViewport ? 3 : 2
+  ctx.setLineDash([8, 6])
+  for (const enemy of enemies) {
+    const linked = shieldLinkPartner(enemy)
+    if (!linked || enemy.id > linked.id) continue
+    ctx.beginPath()
+    ctx.moveTo(enemy.x, enemy.y)
+    ctx.lineTo(linked.x, linked.y)
+    ctx.stroke()
+  }
+  ctx.restore()
   for (const enemy of enemies) {
     const size = enemy.radius * (enemy.boss ? 3.6 : 3.2)
     const kindColor: Record<EnemyKind, string> = { grunt: '#c66a4d', ranged: '#6f9eb2', fast: '#d2aa48', heavy: '#8d9b89', bomber: '#cf7040' }
@@ -2644,7 +2713,7 @@ function draw() {
       ctx.stroke()
     }
     if (enemy.boss && enemy.aimTime > 0) {
-      const phase = levelTuning.boss.phases[enemy.bossPhase]
+      const phase = resolvedBossPhases(stage.value)[enemy.bossPhase]
       const halfArc = Math.max(0.18, phase.spread * (phase.projectileCount - 1) / 2)
       ctx.strokeStyle = '#ff5b42'
       ctx.fillStyle = 'rgba(210, 54, 35, 0.12)'
@@ -2676,7 +2745,7 @@ function draw() {
       ctx.fillStyle = 'rgba(12, 12, 10, 0.82)'
       ctx.fillRect(enemy.x - labelWidth / 2 - 5, labelY - (compactViewport ? 13 : 11), labelWidth + 10, compactViewport ? 18 : 15)
       if (enemy.affixes.length) {
-        ctx.strokeStyle = r4Tuning.affixes[enemy.affixes[0]].color
+        ctx.strokeStyle = r5EliteAffixColor(enemy.affixes[0])
         ctx.lineWidth = compactViewport ? 2 : 1
         ctx.strokeRect(enemy.x - labelWidth / 2 - 5, labelY - (compactViewport ? 13 : 11), labelWidth + 10, compactViewport ? 18 : 15)
       }
@@ -2790,8 +2859,38 @@ function finishReplayAttempt() {
     maxFrameGapMs: Math.round(replayRuntime.maxFrameGapMs * 100) / 100
   }
   let sample: ReplaySample
-  if (replayRuntime.mode === 'r4') {
-    const telemetry = result?.stats.r4Telemetry ?? emptyR4CombatTelemetry()
+  if (replayRuntime.mode === 'r5') {
+    const telemetry = result?.stats.r4Telemetry ?? emptyR5CombatTelemetry()
+    const profile = replayRuntime.buildProfileFactory?.(entry.stage) ?? { id: 'unknown', expectedDps: 0, expectedMaxHp: 0 }
+    const goldIncome = resources.gold - replayRuntime.startResources.gold
+    const alloyIncome = resources.alloy - replayRuntime.startResources.alloy
+    const partsIncome = resources.parts - replayRuntime.startResources.parts
+    const reforgeSupport = supportedRareReforges(goldIncome, alloyIncome)
+    sample = {
+      ...common,
+      waveDurations: (result?.stats.waves ?? []).map((wave) => ({ wave: wave.wave, label: wave.label, duration: Math.round(wave.duration * 1000) / 1000, cleared: wave.cleared })),
+      deathCombination: result?.victory ? '—' : result?.stats.deathCombination || `第 ${currentWave.value} 波生命归零`,
+      affixCombinations: { ...telemetry.affixCombinations },
+      deathZoneHits: telemetry.deathZoneHits,
+      trackingZoneHits: telemetry.trackingZoneHits,
+      armorRecovered: Math.round(telemetry.armorRecovered * 100) / 100,
+      coordinationCoverageSeconds: Math.round(telemetry.coordinationCoverageSeconds * 1000) / 1000,
+      shieldLinkSeconds: Math.round(telemetry.shieldLinkSeconds * 1000) / 1000,
+      commandPulseSeconds: Math.round(telemetry.commandPulseSeconds * 1000) / 1000,
+      suppressionHits: telemetry.suppressionHits,
+      bossPhaseReached: telemetry.bossPhaseReached,
+      eliteKillDurations: telemetry.eliteKillDurations.map((duration) => Math.round(duration * 1000) / 1000),
+      goldIncome,
+      alloyIncome,
+      partsIncome,
+      unlockedReforges: reforgeSupport.unlocked,
+      lockedReforges: reforgeSupport.locked,
+      buildProfileId: profile.id,
+      buildExpectedDps: profile.expectedDps,
+      buildExpectedMaxHp: profile.expectedMaxHp ?? 0
+    } as R5ReplaySample
+  } else if (replayRuntime.mode === 'r4') {
+    const telemetry = result?.stats.r4Telemetry ?? emptyR5CombatTelemetry()
     const profile = replayRuntime.buildProfileFactory?.(entry.stage) ?? { id: 'unknown', expectedDps: 0 }
     sample = {
       ...common,
@@ -2846,7 +2945,7 @@ function finishReplayAttempt() {
   beginReplayAttempt()
 }
 
-function prepareReplay(mode: 'r3' | 'r4', plan: ReplayPlanEntry[], options: ReplayBatchOptions) {
+function prepareReplay(mode: 'r3' | 'r4' | 'r5', plan: ReplayPlanEntry[], options: ReplayBatchOptions) {
   replayRuntime.mode = mode
   replayRuntime.plan = plan
   replayRuntime.planIndex = 0
@@ -2889,6 +2988,21 @@ async function startR4Replay(options: ReplayBatchOptions = {}) {
     return { id: profile.id, expectedDps: profile.expectedDps }
   }
   prepareReplay('r4', createR4ReplayPlan(options.baseSeed), options)
+}
+
+async function startR5Replay(options: ReplayBatchOptions = {}) {
+  if (!import.meta.dev) throw new Error('R5 回放器仅在开发/测试环境可用')
+  if (replayRuntime.running) throw new Error('回放批次已在运行')
+  replayUi.visible = true
+  replayUi.status = 'loading'
+  replayUi.message = '正在载入 R5 八节点长期构筑夹具'
+  const fixtures = await import('~/tests/fixtures/r5')
+  replayRuntime.fixtureFactory = (targetStage) => fixtures.createR5BalanceSave(targetStage as Parameters<typeof fixtures.createR5BalanceSave>[0]) as SaveData
+  replayRuntime.buildProfileFactory = (targetStage) => {
+    const profile = fixtures.getR5BuildProfile(targetStage)
+    return { id: profile.id, expectedDps: profile.expectedDps, expectedMaxHp: profile.expectedMaxHp }
+  }
+  prepareReplay('r5', createR5ReplayPlan(options.baseSeed), options)
 }
 
 function handleReplayBlur() {
@@ -2986,7 +3100,7 @@ function resetRunState(restoreHp = true) {
   runStats.dodgedCharges = 0
   runStats.totalChargeAttempts = 0
   runStats.deathCombination = ''
-  Object.assign(r4Telemetry, emptyR4CombatTelemetry())
+  Object.assign(r4Telemetry, emptyR5CombatTelemetry())
   bossHud.visible = false
   damageDirection.life = 0
   killNotice.value = ''
@@ -3075,6 +3189,7 @@ onMounted(() => {
   if (import.meta.dev) {
     window.__gunfightR3Replay = { start: startR3Replay, stop: stopReplay, getStatus: replayStatus }
     window.__gunfightR4Replay = { start: startR4Replay, stop: stopReplay, getStatus: replayStatus }
+    window.__gunfightR5Replay = { start: startR5Replay, stop: stopReplay, getStatus: replayStatus }
     window.addEventListener('blur', handleReplayBlur)
     document.addEventListener('visibilitychange', handleReplayVisibility)
     const params = new URLSearchParams(window.location.search)
@@ -3098,6 +3213,16 @@ onMounted(() => {
         replayUi.message = error instanceof Error ? error.message : String(error)
       })
     }
+    if (params.get('r5-replay') === '1') {
+      const speed = Number(params.get('speed')) || 12
+      const baseSeed = Number(params.get('seed')) || undefined
+      void startR5Replay({ speed, baseSeed }).catch((error: unknown) => {
+        replayRuntime.running = false
+        replayUi.visible = true
+        replayUi.status = 'error'
+        replayUi.message = error instanceof Error ? error.message : String(error)
+      })
+    }
   }
   animationFrame = requestAnimationFrame(loop)
 })
@@ -3112,6 +3237,7 @@ onBeforeUnmount(() => {
     document.removeEventListener('visibilitychange', handleReplayVisibility)
     delete window.__gunfightR3Replay
     delete window.__gunfightR4Replay
+    delete window.__gunfightR5Replay
   }
 })
 

@@ -3,9 +3,12 @@ export const R3_REPLAY_RUNS_PER_STAGE = 3
 export const R3_REPLAY_FIXED_DELTA = 1 / 60
 export const R4_REPLAY_STAGES = [100, 150, 200, 250, 300, 350, 400, 450, 500] as const
 export const R4_REPLAY_RUNS_PER_STAGE = 3
+export const R5_REPLAY_STAGES = [500, 1000, 1500, 2000, 3000, 5000, 7500, 10000] as const
+export const R5_REPLAY_RUNS_PER_STAGE = 3
 
 export type R3ReplayStage = (typeof R3_REPLAY_STAGES)[number]
 export type R4ReplayStage = (typeof R4_REPLAY_STAGES)[number]
+export type R5ReplayStage = (typeof R5_REPLAY_STAGES)[number]
 
 export type ReplayArea = {
   x: number
@@ -65,6 +68,42 @@ export type R4ReplaySample = R4ReplayPlanEntry & {
   buildExpectedDps: number
 }
 
+export type R5ReplayPlanEntry = {
+  stage: R5ReplayStage
+  run: number
+  seed: number
+}
+
+export type R5ReplaySample = R5ReplayPlanEntry & {
+  attempt: number
+  valid: boolean
+  result: '通关' | '失败'
+  duration: number
+  wallDuration: number
+  waveDurations: Array<{ wave: number; label: string; duration: number; cleared: boolean }>
+  deathCombination: string
+  affixCombinations: Record<string, number>
+  deathZoneHits: number
+  trackingZoneHits: number
+  armorRecovered: number
+  coordinationCoverageSeconds: number
+  shieldLinkSeconds: number
+  commandPulseSeconds: number
+  suppressionHits: number
+  bossPhaseReached: number
+  eliteKillDurations: number[]
+  goldIncome: number
+  alloyIncome: number
+  partsIncome: number
+  unlockedReforges: number
+  lockedReforges: number
+  inputOrSamplingIssue: string
+  maxFrameGapMs: number
+  buildProfileId: string
+  buildExpectedDps: number
+  buildExpectedMaxHp: number
+}
+
 export function createR3ReplayPlan(baseSeed = 0x5a17): R3ReplayPlanEntry[] {
   return R3_REPLAY_STAGES.flatMap((stage, stageIndex) =>
     Array.from({ length: R3_REPLAY_RUNS_PER_STAGE }, (_, runIndex) => ({
@@ -78,6 +117,16 @@ export function createR3ReplayPlan(baseSeed = 0x5a17): R3ReplayPlanEntry[] {
 export function createR4ReplayPlan(baseSeed = 0x6a18): R4ReplayPlanEntry[] {
   return R4_REPLAY_STAGES.flatMap((stage, stageIndex) =>
     Array.from({ length: R4_REPLAY_RUNS_PER_STAGE }, (_, runIndex) => ({
+      stage,
+      run: runIndex + 1,
+      seed: (baseSeed + stageIndex * 1009 + runIndex * 97) >>> 0
+    }))
+  )
+}
+
+export function createR5ReplayPlan(baseSeed = 0x7a19): R5ReplayPlanEntry[] {
+  return R5_REPLAY_STAGES.flatMap((stage, stageIndex) =>
+    Array.from({ length: R5_REPLAY_RUNS_PER_STAGE }, (_, runIndex) => ({
       stage,
       run: runIndex + 1,
       seed: (baseSeed + stageIndex * 1009 + runIndex * 97) >>> 0

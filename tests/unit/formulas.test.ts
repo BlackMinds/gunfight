@@ -11,16 +11,18 @@ describe('game formulas', () => {
     expect(scaleEnemyStats(500, 'heavy').hp).toBeGreaterThan(scaleEnemyStats(1, 'grunt').hp)
   })
 
-  it('caps enemy stat growth at the validated stage while long-term player damage growth is absent', () => {
+  it('保留第 20 关基础指数封顶，由 R4/R5 分段表接管后续成长', () => {
     expect(ENEMY_STAT_GROWTH_CAP).toBe(20)
     expect(scaleEnemyStats(100, 'heavy')).toEqual(scaleEnemyStats(20, 'heavy'))
   })
 
-  it('以第 100 关为锚点应用 R4 分段倍率并在第 500 关后钳制', () => {
+  it('以第 100 关为锚点应用 R4，并从第 501 关连续进入 R5', () => {
     expect(scaleEnemyStats(101, 'heavy')).toEqual(scaleEnemyStats(100, 'heavy'))
     expect(scaleEnemyStats(500, 'heavy').hp).toBeCloseTo(scaleEnemyStats(100, 'heavy').hp * 2)
     expect(scaleEnemyStats(500, 'heavy').damage).toBeCloseTo(scaleEnemyStats(100, 'heavy').damage * 1.38)
-    expect(scaleEnemyStats(9999, 'heavy')).toEqual(scaleEnemyStats(500, 'heavy'))
+    expect(scaleEnemyStats(501, 'heavy')).toEqual(scaleEnemyStats(500, 'heavy'))
+    expect(scaleEnemyStats(10000, 'heavy').hp).toBeCloseTo(scaleEnemyStats(500, 'heavy').hp * 10)
+    expect(scaleEnemyStats(10000, 'heavy').damage).toBeCloseTo(scaleEnemyStats(500, 'heavy').damage * 3)
   })
 
   it('calculates larger rewards for later stages', () => {
