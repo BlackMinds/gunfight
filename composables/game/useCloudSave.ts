@@ -1,7 +1,7 @@
 import { computed, reactive, ref, shallowRef } from 'vue'
 
 type TimestampedSave = { savedAt?: number }
-type CloudConflict<T> = { revision: number; payload: T; savedAt: string | null }
+type CloudConflict<T> = { revision: number; payload: T | null; savedAt: string | null }
 
 const TOKEN_KEY = 'gunfight-cloud-token'
 const USER_KEY = 'gunfight-cloud-user'
@@ -16,11 +16,13 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
   const hasSession = computed(() => Boolean(token.value))
   let syncTimer: ReturnType<typeof setTimeout> | null = null
   let queuedPayload: T | null = null
+  let pushQueue = Promise.resolve()
+  let sessionVersion = 0
 
-  async function request<R>(path: string, method: 'GET' | 'POST' | 'PUT', body?: unknown): Promise<R> {
+  async function request<R>(path: string, method: 'GET' | 'POST' | 'PUT', body?: unknown, sessionToken = token.value): Promise<R> {
     const response = await fetch(path, {
       method,
-      headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(token.value ? { authorization: `Bearer ${token.value}` } : {}) },
+      headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(sessionToken ? { authorization: `Bearer ${sessionToken}` } : {}) },
       body: body ? JSON.stringify(body) : undefined
     })
     const result = await response.json().catch(() => ({})) as Record<string, unknown>
@@ -40,15 +42,16 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
     state.detail = error instanceof Error ? error.message : '未知云存档错误'
   }
 
-  async function push(payload = options.getLocal(), baseRevision = revision.value) {
-    if (!token.value) return
+  async function performPush(payload: T, baseRevision: number | undefined, queuedSession: number, sessionToken: string) {
+    if (!sessionToken || queuedSession !== sessionVersion || conflict.value) return
     state.status = 'syncing'
     state.label = '云存档同步中'
     state.detail = '正在安全写入云端……'
     try {
-      const result = await request<{ conflict: boolean; revision: number; payload?: T; savedAt: string | null }>('/api/cloud-save', 'PUT', { baseRevision, payload })
-      if (result.conflict && result.payload) {
-        conflict.value = { revision: result.revision, payload: result.payload, savedAt: result.savedAt }
+      const result = await request<{ conflict: boolean; revision: number; payload?: T | null; savedAt: string | null }>('/api/cloud-save', 'PUT', { baseRevision: baseRevision ?? revision.value, payload }, sessionToken)
+      if (queuedSession !== sessionVersion) return
+      if (result.conflict) {
+        conflict.value = { revision: result.revision, payload: result.payload ?? null, savedAt: result.savedAt }
         state.status = 'conflict'
         state.label = '检测到存档冲突'
         state.detail = '本地和云端都发生了更新，请选择保留哪一个版本。'
@@ -58,16 +61,27 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
       conflict.value = null
       setReady()
     } catch (error) {
-      setError(error)
+      if (queuedSession === sessionVersion) setError(error)
     }
+  }
+
+  function push(payload = options.getLocal(), baseRevision?: number) {
+    const queuedSession = sessionVersion
+    const sessionToken = token.value
+    const operation = pushQueue.then(() => performPush(payload, baseRevision, queuedSession, sessionToken))
+    pushQueue = operation.catch(() => undefined)
+    return operation
   }
 
   async function pullAndMerge() {
     if (!token.value) return
+    const pullingSession = sessionVersion
+    const sessionToken = token.value
     state.status = 'syncing'
     state.label = '正在读取云存档'
     try {
-      const remote = await request<{ revision: number; payload: T | null; savedAt: string | null }>('/api/cloud-save', 'GET')
+      const remote = await request<{ revision: number; payload: T | null; savedAt: string | null }>('/api/cloud-save', 'GET', undefined, sessionToken)
+      if (pullingSession !== sessionVersion) return
       revision.value = remote.revision
       if (!remote.payload) {
         await push(options.getLocal(), 0)
@@ -83,7 +97,7 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
         setReady()
       }
     } catch (error) {
-      setError(error)
+      if (pullingSession === sessionVersion) setError(error)
     }
   }
 
@@ -92,6 +106,7 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
     state.label = mode === 'login' ? '正在登录' : '正在创建账号'
     try {
       const result = await request<{ token: string; username: string }>(`/api/auth/${mode}`, 'POST', { username: username.value, password: password.value })
+      sessionVersion += 1
       token.value = result.token
       username.value = result.username
       password.value = ''
@@ -108,6 +123,7 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
 
   function logout() {
     if (syncTimer) clearTimeout(syncTimer)
+    sessionVersion += 1
     token.value = ''
     password.value = ''
     revision.value = 0
@@ -140,6 +156,10 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
   function useCloudVersion() {
     const pending = conflict.value
     if (!pending) return
+    if (!pending.payload) {
+      setError(new Error('云端没有可采用的有效存档，请保留本地版本'))
+      return
+    }
     options.applyRemote(pending.payload)
     revision.value = pending.revision
     conflict.value = null
@@ -149,7 +169,10 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
   function initialize() {
     token.value = localStorage.getItem(TOKEN_KEY) ?? ''
     username.value = localStorage.getItem(USER_KEY) ?? ''
-    if (token.value) void pullAndMerge()
+    if (token.value) {
+      sessionVersion += 1
+      void pullAndMerge()
+    }
   }
 
   return { username, password, revision, conflict, state, hasSession, login, register, logout, push, pullAndMerge, queueSync, keepLocalVersion, useCloudVersion, initialize }
