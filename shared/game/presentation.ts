@@ -1,6 +1,6 @@
 import { scaleEnemyStats, type EnemyKind } from './formulas'
 import { eliteAffixLabels, r4MechanicLabels, resolveEliteAffixes, type EliteAffixId } from './r4'
-import { getR5StageBand, r5BossHpMultiplierForStage, r5EliteAffixLabels, r5GrowthBudgetForStage, r5MechanicLabels, resolveR5EliteAffixes } from './r5'
+import { getR5StageBand, getR5WarzoneTheme, r5BossHpMultiplierForStage, r5EliteAffixLabels, r5GrowthBudgetForStage, r5MechanicLabels, resolveR5EliteAffixes } from './r5'
 import { levelTuning, resolvedBossPhases } from './waves'
 
 export const enemyKindLabels: Record<EnemyKind, string> = {
@@ -8,7 +8,10 @@ export const enemyKindLabels: Record<EnemyKind, string> = {
   ranged: '火力手',
   fast: '迅捷兵',
   heavy: '重装兵',
-  bomber: '爆破兵'
+  bomber: '爆破兵',
+  sniper: '狙击手',
+  medic: '维修兵',
+  warden: '护卫兵'
 }
 
 export function getStageTypeLabel(stage: number) {
@@ -30,6 +33,7 @@ export function getEnemyPreview(stage: number) {
   const affixLabels = r5 ? r5EliteAffixLabels(affixes) : eliteAffixLabels(affixes as EliteAffixId[])
   const mechanicLabels = [...r4MechanicLabels(stage), ...r5MechanicLabels(stage)]
   const stageBand = getR5StageBand(stage)
+  const warzoneTheme = getR5WarzoneTheme(stage)
   const growthBudget = stageBand ? r5GrowthBudgetForStage(stage) : null
   const multipliers = boss ? levelTuning.boss.multipliers : elite ? levelTuning.elite.multipliers : { hp: 1, damage: 1, speed: 1, radius: 1 }
   return {
@@ -44,6 +48,8 @@ export function getEnemyPreview(stage: number) {
     affixLabels,
     mechanicLabels,
     stageBandLabel: stageBand?.label ?? '',
+    warzoneLandmark: warzoneTheme?.landmark ?? '',
+    warzonePositioningRule: warzoneTheme?.positioningRule ?? '',
     eliteAffixCount: stageBand?.eliteAffixCount ?? (stage >= 401 ? 2 : stage >= 101 ? 1 : 0),
     bossPhaseCount: resolvedBossPhases(stage).length,
     expectedDps: growthBudget?.expectedDps ?? 0,

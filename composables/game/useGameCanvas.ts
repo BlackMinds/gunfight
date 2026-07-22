@@ -37,11 +37,12 @@ import { getStageMeta, rewardForStage, scaleEnemyStats, type EnemyKind } from '~
 import { canAdvanceStage, maxSelectableStageFor, nextStageAfterVictory, restoreProgression } from '~/shared/game/progression'
 import { BASE_INVENTORY_CAPACITY, canAffordAttachmentReforge, getAttachmentRecycleValue, getAttachmentReforgeCost, resolveAttachmentOverflow, type AttachmentReforgeCost } from '~/shared/game/inventory'
 import { enemyKindLabels, getEnemyPreview, getStageTypeLabel } from '~/shared/game/presentation'
+import { createOperationWavePlan, getOperationDefinition, operationAdvancesCampaign, operationDefinitions, operationUnlocked, type OperationMode } from '~/shared/game/operations'
 import { eliteAffixCombatModifiers, eliteAffixLabels, r4EnemyMechanicsForStage, r4Tuning, resolveEliteAffixes, type EliteAffixId } from '~/shared/game/r4'
-import { getR5StageBand, r5BossHpMultiplierForStage, r5CampaignGrowthForHighestCleared, r5EliteAffixColor, r5EliteAffixCombatModifiers, r5EliteAffixLabels, r5EnemyMechanicsForStage, r5ShieldLinkPairEligible, r5Tuning, resolveR5EliteAffixes, type R5EliteAffixId } from '~/shared/game/r5'
+import { getR5WarzoneTheme, r5BossHpMultiplierForStage, r5CampaignGrowthForHighestCleared, r5EliteAffixColor, r5EliteAffixCombatModifiers, r5EliteAffixLabels, r5EnemyMechanicsForStage, r5ShieldLinkPairEligible, r5Tuning, resolveR5EliteAffixes, type R5EliteAffixId, type R5WarzoneTheme } from '~/shared/game/r5'
 import { CURRENT_SAVE_VERSION, emptyLegacyBase, migrateAttachmentIdentity } from '~/shared/game/save'
 import { R3_REPLAY_FIXED_DELTA, clockwisePatrolVector, createR3ReplayPlan, createR4ReplayPlan, createR5ReplayPlan, createSeededRandom, supportedRareReforges, type R3ReplayPlanEntry, type R3ReplaySample, type R4ReplayPlanEntry, type R4ReplaySample, type R5ReplayPlanEntry, type R5ReplaySample } from '~/shared/game/replay'
-import { countWaveEnemies, createWavePlan, enemyKindForWave, levelTuning, resolvedBossPhases, resolvedSpawnInterval } from '~/shared/game/waves'
+import { countWaveEnemies, enemyKindForWave, levelTuning, resolvedBossPhases, resolvedSpawnInterval } from '~/shared/game/waves'
 import { buildStrategyInsights, dpsGapPercent, durationVerdict, emptyR5CombatTelemetry, recordAffixCombination, type AttachmentContribution, type R5CombatTelemetry, type WaveRunRecord } from '~/shared/game/telemetry'
 import {
   applyElementStatus,
@@ -215,6 +216,8 @@ const mode = ref<Mode>('base')
 const stage = ref(1)
 const stageDraft = ref(1)
 const highestCleared = ref(0)
+const selectedOperationMode = ref<OperationMode>('campaign')
+const activeOperationMode = ref<OperationMode>('campaign')
 const kills = ref(0)
 const spawnedEnemyCount = ref(0)
 const upgradeChoices = ref<Upgrade[]>([])
@@ -420,8 +423,15 @@ const stageMeta = computed(() => getStageMeta(stage.value))
 const stageLabel = computed(() => stage.value.toString().padStart(4, '0'))
 const debugStageSelection = import.meta.dev
 const maxSelectableStage = computed(() => maxSelectableStageFor(highestCleared.value, debugStageSelection))
-const canAdvanceToNextStage = computed(() => canAdvanceStage(stage.value, Boolean(lastRun.value?.victory), debugStageSelection))
-const wavePlan = computed(() => createWavePlan(stage.value))
+const operationMode = computed(() => mode.value === 'base' ? selectedOperationMode.value : activeOperationMode.value)
+const operationDefinition = computed(() => getOperationDefinition(operationMode.value))
+const operationOptions = computed(() => operationDefinitions.map((operation) => ({
+  ...operation,
+  unlocked: debugStageSelection || operationUnlocked(operation.id, highestCleared.value)
+})))
+const isIndependentOperation = computed(() => !operationAdvancesCampaign(operationMode.value))
+const canAdvanceToNextStage = computed(() => !isIndependentOperation.value && canAdvanceStage(stage.value, Boolean(lastRun.value?.victory), debugStageSelection))
+const wavePlan = computed(() => createOperationWavePlan(stage.value, operationMode.value))
 const totalWaves = computed(() => wavePlan.value.length)
 const currentWaveDefinition = computed(() => wavePlan.value[currentWave.value - 1])
 const targetKills = computed(() => countWaveEnemies(wavePlan.value))
@@ -430,6 +440,11 @@ const expToNextLevel = computed(() => Math.max(0, nextLevelExp.value - player.ex
 const hpPercent = computed(() => Math.max(0, Math.round((player.hp / player.maxHp) * 100)))
 const expPercent = computed(() => Math.min(100, Math.round((player.exp / nextLevelExp.value) * 100)))
 const elapsedSeconds = computed(() => Math.floor(stageTimer.value))
+const operationTimeRemaining = computed(() => Math.max(0, (operationDefinition.value.durationSeconds ?? 0) - stageTimer.value))
+const operationObjectiveText = computed(() => operationDefinition.value.objective)
+const operationProgressText = computed(() => operationMode.value === 'survival'
+  ? `剩余 ${Math.ceil(operationTimeRemaining.value)} 秒 · 击杀 ${kills.value}`
+  : `击杀 ${Math.min(kills.value, targetKills.value)}/${targetKills.value}`)
 const damagePreview = computed(() => Math.round(weapon.damage * modifiers.damage))
 const fireRatePreview = computed(() => (weapon.fireRate * modifiers.fireRate).toFixed(1))
 const moveSpeedPreview = computed(() => Math.round(player.speed * modifiers.speed))
@@ -477,13 +492,31 @@ const showMovementHint = computed(() => {
 const completedDailyTasks = computed(() => dailyTasks.value.filter((task) => task.progress >= task.target).length)
 const completedWeeklyTasks = computed(() => weeklyTasks.value.filter((task) => task.progress >= task.target).length)
 const completedAchievements = computed(() => achievements.value.filter((task) => task.progress >= task.target).length)
-const stageType = computed(() => getStageTypeLabel(stage.value))
-const nextEnemyPreview = computed(() => getEnemyPreview(stage.value))
+const stageType = computed(() => operationMode.value === 'campaign' ? getStageTypeLabel(stage.value) : operationDefinition.value.label)
+const nextEnemyPreview = computed(() => {
+  const preview = getEnemyPreview(stage.value)
+  if (operationMode.value === 'challenge') return { ...preview, label: '精英护卫与终波首领' }
+  if (operationMode.value === 'survival') {
+    const frontline = scaleEnemyStats(stage.value, 'grunt')
+    return { ...preview, label: '连续混编部队', hp: Math.round(frontline.hp), damage: Math.round(frontline.damage), bossPhaseCount: 0 }
+  }
+  return preview
+})
 const inventoryCapacityLabel = computed(() => `${inventory.value.length} / ${BASE_INVENTORY_CAPACITY}`)
 const inventoryNearCapacity = computed(() => inventory.value.length >= Math.floor(BASE_INVENTORY_CAPACITY * 0.8))
 const inventoryOverCapacity = computed(() => inventory.value.length > BASE_INVENTORY_CAPACITY)
 const favoriteAttachmentCount = computed(() => inventory.value.filter((item) => item.favorite).length)
-const stageRewardPreview = computed(() => rewardForStage(stage.value, targetKills.value))
+const stageRewardPreview = computed(() => {
+  const reward = rewardForStage(stage.value, targetKills.value)
+  const multiplier = operationDefinition.value.rewardMultiplier
+  return {
+    ...reward,
+    gold: Math.round(reward.gold * multiplier),
+    alloy: Math.round(reward.alloy * multiplier),
+    parts: Math.round(reward.parts * multiplier),
+    exp: Math.round(reward.exp * multiplier)
+  }
+})
 const dropProfile = computed(() => {
   const profile = getAttachmentDropProfile(stage.value)
   const raritySummary = attachmentRarities.filter((rarity) => profile.rarityWeights[rarity] > 0).join(' / ')
@@ -496,6 +529,7 @@ const dropProfile = computed(() => {
 const waveStatusText = computed(() => {
   void kills.value
   const wave = currentWaveDefinition.value
+  if (operationMode.value === 'survival') return `${operationObjectiveText.value} · 当前压力 ${Math.min(currentWave.value, totalWaves.value)}/${totalWaves.value} · 场上 ${enemies.length}`
   if (!wave) return '区域已清空'
   if (waveTransitionPending.value) return `威胁已清除 · ${Math.max(0, waveTransitionSeconds.value).toFixed(1)} 秒后接敌`
   return `已投入 ${waveSpawnedCount.value} / ${wave.count} · 场上 ${enemies.length}`
@@ -1119,6 +1153,12 @@ function adjustStage(amount: number) {
   commitStageDraft()
 }
 
+function selectOperation(operation: OperationMode) {
+  if (mode.value !== 'base' || (!debugStageSelection && !operationUnlocked(operation, highestCleared.value))) return
+  selectedOperationMode.value = operation
+  bannerText.value = `${getOperationDefinition(operation).label}已就绪`
+}
+
 function getEquippedBonuses(): EquippedBonusTotals {
   return activeEquippedParts.value.reduce(
     (total, part) => ({
@@ -1572,7 +1612,7 @@ function spawnEnemy(options: { boss?: boolean; elite?: boolean; kind?: EnemyKind
   const affixNames = stage.value >= 501 ? r5EliteAffixLabels(affixes) : eliteAffixLabels(affixes as EliteAffixId[])
   const multipliers = forceBoss ? levelTuning.boss.multipliers : elite ? levelTuning.elite.multipliers : { hp: 1, damage: 1, speed: 1, radius: 1 }
   const maxHp = stats.hp * multipliers.hp * (forceBoss ? r5BossHpMultiplierForStage(stage.value) : 1)
-  const armorRatio = forceBoss ? 0 : (kind === 'heavy' ? levelTuning.enemyWarnings.heavyArmorRatio : 0) + affixModifiers.armorRatio
+  const armorRatio = forceBoss ? 0 : (kind === 'heavy' ? levelTuning.enemyWarnings.heavyArmorRatio : kind === 'warden' ? 0.55 : 0) + affixModifiers.armorRatio
   const maxArmor = maxHp * armorRatio
 
   enemies.push({
@@ -1707,6 +1747,13 @@ function shieldLinkPartner(enemy: Enemy) {
     && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= r5Tuning.linkedRange)
 }
 
+function wardenProtector(enemy: Enemy) {
+  if (enemy.kind === 'warden') return null
+  return enemies.find((candidate) => candidate.kind === 'warden'
+    && candidate.hp > 0
+    && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= 145) ?? null
+}
+
 function dealDamage(enemy: Enemy, rawDamage: number, critical = false, pierce = 0, element: WeaponElement = '物理', statusChance = 0) {
   let multiplier = 1
   const armoredEnemy = !enemy.boss && enemy.armor > 0
@@ -1719,7 +1766,8 @@ function dealDamage(enemy: Enemy, rawDamage: number, critical = false, pierce = 
   const statusDamageMultiplier = (enemy.statuses.shockSeconds > 0 ? 1.12 : 1) * (enemy.statuses.vulnerableSeconds > 0 ? 1.18 : 1)
   const eliteMultiplier = enemy.elite || enemy.boss ? 1 + modifiers.eliteDamage : 1
   const setBuffMultiplier = eliteSetBuffTimer > 0 ? 1.25 : 1
-  const applied = Math.min(hpBefore, rawDamage * multiplier * statusDamageMultiplier * eliteMultiplier * setBuffMultiplier)
+  const guardMultiplier = wardenProtector(enemy) ? 0.75 : 1
+  const applied = Math.min(hpBefore, rawDamage * multiplier * statusDamageMultiplier * eliteMultiplier * setBuffMultiplier * guardMultiplier)
   if (armoredEnemy && enemy.kind === 'heavy' && pierce > 0) {
     runStats.heavyPierceDamage += Math.min(applied, Math.max(0, rawDamage * (multiplier - multiplierWithoutPierce)))
   }
@@ -1932,7 +1980,62 @@ function drawSpriteTint(ctx: CanvasRenderingContext2D, image: HTMLImageElement |
   ctx.restore()
 }
 
-function drawPlayArea(ctx: CanvasRenderingContext2D, area: PlayArea, width: number, height: number) {
+function drawWarzoneMotif(ctx: CanvasRenderingContext2D, area: PlayArea, theme: R5WarzoneTheme) {
+  const centerX = area.x + area.width / 2
+  const centerY = area.y + area.height / 2
+  ctx.save()
+  ctx.strokeStyle = theme.accent
+  ctx.fillStyle = theme.accent
+  ctx.globalAlpha = 0.18
+  ctx.lineWidth = 3
+
+  if (theme.motif === 'assembly-lines') {
+    for (let lane = 1; lane < 5; lane++) {
+      const y = area.y + area.height * lane / 5
+      ctx.setLineDash([22, 12])
+      ctx.beginPath(); ctx.moveTo(area.x, y); ctx.lineTo(area.x + area.width, y); ctx.stroke()
+    }
+  } else if (theme.motif === 'hunting-arcs') {
+    for (let ring = 1; ring <= 3; ring++) {
+      ctx.beginPath(); ctx.arc(centerX, centerY, Math.min(area.width, area.height) * ring * 0.13, -0.8, Math.PI * 1.45); ctx.stroke()
+    }
+  } else if (theme.motif === 'storm-cuts') {
+    ctx.setLineDash([28, 10])
+    for (let offset = -area.height; offset < area.width; offset += 76) {
+      ctx.beginPath(); ctx.moveTo(area.x + offset, area.y + area.height); ctx.lineTo(area.x + offset + area.height, area.y); ctx.stroke()
+    }
+  } else if (theme.motif === 'fortress-cross') {
+    const size = Math.min(area.width, area.height) * 0.3
+    ctx.strokeRect(centerX - size / 2, centerY - size / 2, size, size)
+    ctx.beginPath(); ctx.moveTo(area.x, centerY); ctx.lineTo(area.x + area.width, centerY); ctx.moveTo(centerX, area.y); ctx.lineTo(centerX, area.y + area.height); ctx.stroke()
+  } else if (theme.motif === 'radiation-blocks') {
+    for (let index = 0; index < 7; index++) {
+      const blockWidth = area.width * 0.12
+      const blockHeight = area.height * 0.16
+      const x = area.x + ((index * 37) % 83) / 100 * (area.width - blockWidth)
+      const y = area.y + ((index * 53) % 79) / 100 * (area.height - blockHeight)
+      ctx.fillRect(x, y, blockWidth, blockHeight)
+    }
+  } else if (theme.motif === 'deep-trenches') {
+    for (let lane = 1; lane < 5; lane++) {
+      const y = area.y + area.height * lane / 5
+      ctx.fillRect(area.x, y - 7, area.width, 14)
+    }
+  } else if (theme.motif === 'black-rings') {
+    ctx.setLineDash([9, 11])
+    for (let ring = 1; ring <= 4; ring++) {
+      ctx.beginPath(); ctx.arc(centerX, centerY, Math.min(area.width, area.height) * ring * 0.105, 0, Math.PI * 2); ctx.stroke()
+    }
+  } else {
+    for (let ray = 0; ray < 8; ray++) {
+      const angle = ray * Math.PI / 4
+      ctx.beginPath(); ctx.moveTo(centerX, centerY); ctx.lineTo(centerX + Math.cos(angle) * area.width, centerY + Math.sin(angle) * area.height); ctx.stroke()
+    }
+  }
+  ctx.restore()
+}
+
+function drawPlayArea(ctx: CanvasRenderingContext2D, area: PlayArea, width: number, height: number, theme: R5WarzoneTheme | null) {
   ctx.save()
   ctx.fillStyle = 'rgba(7, 7, 6, 0.38)'
   ctx.fillRect(0, 0, width, area.y)
@@ -1944,7 +2047,15 @@ function drawPlayArea(ctx: CanvasRenderingContext2D, area: PlayArea, width: numb
   ctx.beginPath()
   ctx.rect(area.x, area.y, area.width, area.height)
   ctx.clip()
-  ctx.strokeStyle = 'rgba(119, 183, 215, 0.12)'
+  if (theme) {
+    ctx.globalAlpha = 0.58
+    ctx.fillStyle = theme.floor
+    ctx.fillRect(area.x, area.y, area.width, area.height)
+    ctx.globalAlpha = 1
+    drawWarzoneMotif(ctx, area, theme)
+  }
+  ctx.strokeStyle = theme ? theme.grid : 'rgba(119, 183, 215, 0.12)'
+  ctx.globalAlpha = theme ? 0.28 : 1
   ctx.lineWidth = 1
   ctx.setLineDash([3, 9])
   for (let column = 1; column < 6; column++) {
@@ -1969,6 +2080,8 @@ function drawPlayArea(ctx: CanvasRenderingContext2D, area: PlayArea, width: numb
   ctx.stroke()
   ctx.restore()
 
+  ctx.globalAlpha = 1
+
   const inset = Math.max(5, Math.min(area.width, area.height) * 0.018)
   ctx.setLineDash([8, 7])
   ctx.strokeStyle = 'rgba(119, 183, 215, 0.34)'
@@ -1978,7 +2091,7 @@ function drawPlayArea(ctx: CanvasRenderingContext2D, area: PlayArea, width: numb
   ctx.setLineDash([])
   ctx.shadowColor = 'rgba(229, 184, 75, 0.32)'
   ctx.shadowBlur = 9
-  ctx.strokeStyle = 'rgba(229, 184, 75, 0.68)'
+  ctx.strokeStyle = theme?.boundary ?? 'rgba(229, 184, 75, 0.68)'
   ctx.lineWidth = 2
   ctx.strokeRect(area.x, area.y, area.width, area.height)
 
@@ -2001,14 +2114,14 @@ function drawPlayArea(ctx: CanvasRenderingContext2D, area: PlayArea, width: numb
   }
 
   const compact = width <= 520
-  const label = compact ? '行动区' : '行动区域 / ACTIVE FIELD'
+  const label = theme ? (compact ? theme.landmark : `${theme.landmark} / ${theme.positioningRule}`) : compact ? '行动区' : '行动区域 / ACTIVE FIELD'
   ctx.font = `800 ${compact ? 11 : 12}px system-ui, sans-serif`
   const labelWidth = ctx.measureText(label).width + 18
   const labelX = compact ? area.x + area.width - labelWidth - 9 : area.x + 9
   const labelY = compact ? area.y + 50 : area.y + area.height - 33
   ctx.fillStyle = 'rgba(7, 10, 11, 0.86)'
   ctx.fillRect(labelX, labelY, labelWidth, 24)
-  ctx.fillStyle = '#f5d57c'
+  ctx.fillStyle = theme?.boundary ?? '#f5d57c'
   ctx.textAlign = 'left'
   ctx.fillText(label, labelX + 9, labelY + 16)
   ctx.restore()
@@ -2016,8 +2129,8 @@ function drawPlayArea(ctx: CanvasRenderingContext2D, area: PlayArea, width: numb
 
 function enemySprite(enemy: Enemy) {
   if (enemy.boss) return sprites.enemyBoss
-  if (enemy.kind === 'fast') return sprites.enemyFast
-  if (enemy.kind === 'heavy') return sprites.enemyHeavy
+  if (enemy.kind === 'fast' || enemy.kind === 'sniper') return sprites.enemyFast
+  if (enemy.kind === 'heavy' || enemy.kind === 'warden') return sprites.enemyHeavy
   if (enemy.kind === 'bomber') return sprites.enemyBomber
   return sprites.enemyGrunt
 }
@@ -2141,7 +2254,7 @@ function damagePlayer(rawDamage: number, sourceX: number, sourceY: number, sourc
   player.invuln = 0.35
   playSound('hurt')
   if (player.hp <= 0) {
-    const threatLabels: Record<EnemyKind | 'boss', string> = { grunt: '暴徒', ranged: '远程兵', fast: '迅捷兵', heavy: '重装兵', bomber: '爆破兵', boss: 'Boss' }
+    const threatLabels: Record<EnemyKind | 'boss', string> = { grunt: '暴徒', ranged: '火力手', fast: '迅捷兵', heavy: '重装兵', bomber: '爆破兵', sniper: '狙击手', medic: '维修兵', warden: '护卫兵', boss: 'Boss' }
     const nearby = enemies
       .filter((enemy) => Math.hypot(enemy.x - player.x, enemy.y - player.y) < 320)
       .map((enemy) => enemy.boss ? 'boss' as const : enemy.kind)
@@ -2151,7 +2264,7 @@ function damagePlayer(rawDamage: number, sourceX: number, sourceY: number, sourc
 
 function fireEnemyProjectile(enemy: Enemy, spread = 0, lockedAngle?: number, damageMultiplier?: number) {
   const angle = (lockedAngle ?? Math.atan2(player.y - enemy.y, player.x - enemy.x)) + spread
-  const speed = enemy.boss ? levelTuning.boss.projectileSpeed : levelTuning.enemyWarnings.rangedProjectileSpeed
+  const speed = enemy.boss ? levelTuning.boss.projectileSpeed : enemy.kind === 'sniper' ? 315 : levelTuning.enemyWarnings.rangedProjectileSpeed
   enemyProjectiles.push({
     x: enemy.x,
     y: enemy.y,
@@ -2172,6 +2285,59 @@ function fireBossVolley(enemy: Enemy) {
   for (let index = 0; index < phase.projectileCount; index += 1) {
     fireEnemyProjectile(enemy, (index - middle) * phase.spread, enemy.aimAngle)
   }
+}
+
+function completeVictory() {
+  const independent = !operationAdvancesCampaign(activeOperationMode.value)
+  const operation = getOperationDefinition(activeOperationMode.value)
+  if (!independent) {
+    highestCleared.value = Math.max(highestCleared.value, stage.value)
+    recordAllTaskEvents('clear')
+    recordAllTaskEvents('stage', stage.value)
+    if (stage.value % 25 === 0) recordAllTaskEvents('resource')
+    if (stage.value >= 3000 && stage.value % 50 === 0) recordAllTaskEvents('challenge')
+  } else {
+    recordAllTaskEvents('challenge')
+  }
+  const stageReward = rewardForStage(stage.value, kills.value)
+  const profile = getAttachmentDropProfile(stage.value)
+  const bossDefeated = activeOperationMode.value === 'challenge' || stage.value % 10 === 0
+  const guaranteedRarity = guaranteedDropRarity(stage.value, dropPity, bossDefeated)
+  const shouldDrop = gameplayRandom() < Math.min(1, profile.dropChance * (1 + modifiers.dropRate))
+  const dropCount = attachmentDropCount(shouldDrop, guaranteedRarity)
+  const attachmentDrops = grantAttachmentDrops(dropCount, profile.rarityWeights, guaranteedRarity)
+  const bestRarity = attachmentDrops.reduce<AttachmentRarity>((best, item) => rarityRank(item.rarity) > rarityRank(best) ? item.rarity : best, '普通')
+  recordPityDrop(dropPity, stage.value, bestRarity, bossDefeated)
+  const rewardDoubled = gameplayRandom() < modifiers.doubleRewardChance
+  const rewardMultiplier = (rewardDoubled ? 2 : 1) * operation.rewardMultiplier
+  const reward: Reward = {
+    ...stageReward,
+    gold: Math.round(stageReward.gold * modifiers.goldGain * rewardMultiplier),
+    alloy: Math.round(stageReward.alloy * rewardMultiplier),
+    parts: Math.round(stageReward.parts * rewardMultiplier),
+    exp: Math.round(stageReward.exp * rewardMultiplier),
+    attachments: attachmentDrops
+  }
+  resources.gold += reward.gold
+  runStats.goldEarned += reward.gold
+  resources.alloy += reward.alloy
+  resources.parts += reward.parts
+  grantExp(reward.exp)
+  settlementEquipNotice.value = null
+  lastRun.value = {
+    title: independent ? `${operation.label}完成` : `第 ${stage.value} 关清场`,
+    body: attachmentDrops.length
+      ? `${rewardDoubled ? '黄金后勤触发奖励翻倍；' : ''}缴获 ${attachmentDrops.map((item) => item.name).join('、')}，回基地可替换构筑。`
+      : independent ? `${operation.label}完成，本次行动不推进主线关卡。` : `${stageMeta.value.name} 已压制，本次未发现可用配件。`,
+    victory: true,
+    reward,
+    stats: snapshotRunStats(true)
+  }
+  announceBanner(attachmentDrops.length ? `缴获配件 · ${attachmentDrops[0].name}` : `${operation.label}完成`, 'victory')
+  playSound('victory')
+  clearCombatFeedback()
+  mode.value = 'settlement'
+  saveGame()
 }
 
 function update(delta: number) {
@@ -2377,7 +2543,45 @@ function update(delta: number) {
     let moveAngle = directAngle + Math.sin(enemy.wobble) * (enemy.kind === 'fast' ? 0.32 : 0.12)
     let speedScale = 1
 
-    if (enemy.kind === 'ranged') {
+    if (enemy.kind === 'sniper') {
+      if (distance < 280) moveAngle = directAngle + Math.PI
+      else if (distance < 430) moveAngle = directAngle + Math.PI / 2 * (enemy.id % 2 ? 1 : -1)
+      speedScale = enemy.aimTime > 0 ? 0.04 : distance > 430 || distance < 280 ? 0.78 : 0.28
+      if (statusTick.canAct && previousAimTime > 0 && enemy.aimTime <= 0) {
+        fireEnemyProjectile(enemy, 0, enemy.aimAngle, 0.92)
+        enemy.attackTimer = enemy.elite ? 1.65 : 2.3
+      } else if (statusTick.canAct && enemy.attackTimer <= 0 && enemy.aimTime <= 0 && distance < 540) {
+        enemy.aimAngle = directAngle
+        enemy.aimTime = 1.15
+      }
+    } else if (enemy.kind === 'medic') {
+      const injuredAllies = enemies.filter((candidate) => candidate.id !== enemy.id && candidate.hp > 0 && candidate.hp < candidate.maxHp && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= 170)
+      const focus = injuredAllies.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0]
+      if (focus) {
+        const focusDistance = Math.hypot(focus.x - enemy.x, focus.y - enemy.y)
+        moveAngle = Math.atan2(focus.y - enemy.y, focus.x - enemy.x)
+        speedScale = focusDistance > 115 ? 0.72 : 0.18
+      } else if (distance < 170) {
+        moveAngle = directAngle + Math.PI
+        speedScale = 0.72
+      } else {
+        speedScale = 0.42
+      }
+      if (statusTick.canAct && enemy.attackTimer <= 0) {
+        let healed = 0
+        for (const ally of injuredAllies) {
+          const amount = Math.min(ally.maxHp - ally.hp, ally.maxHp * 0.09)
+          ally.hp += amount
+          healed += amount
+        }
+        if (healed > 0) {
+          hitTexts.push({ x: enemy.x, y: enemy.y - enemy.radius - 18, value: `编队修复 +${Math.round(healed)}`, life: 0.75, maxLife: 0.75, color: '#7bd49a' })
+          enemy.attackTimer = 4.2
+        } else {
+          enemy.attackTimer = 0.6
+        }
+      }
+    } else if (enemy.kind === 'ranged') {
       if (distance < 145) moveAngle = directAngle + Math.PI
       else if (distance < 235) moveAngle = directAngle + Math.PI / 2 * (enemy.id % 2 ? 1 : -1)
       speedScale = enemy.aimTime > 0 ? 0.18 : distance > 235 || distance < 145 ? 0.92 : 0.56
@@ -2557,10 +2761,18 @@ function update(delta: number) {
   maybeOfferUpgrade()
 
   if (player.hp <= 0) {
-    lastRun.value = { title: '撤离失败', body: `倒在第 ${currentWave.value} 波，剩余 ${Math.max(0, targetKills.value - kills.value)} 名敌人。保留已拾取资源。`, victory: false, stats: snapshotRunStats(false) }
+    const failureBody = activeOperationMode.value === 'survival'
+      ? `生存至 ${formatPreciseClock(stageTimer.value)}，距完成还差 ${Math.ceil(operationTimeRemaining.value)} 秒。保留已拾取资源。`
+      : `倒在第 ${currentWave.value} 波，剩余 ${Math.max(0, targetKills.value - kills.value)} 名敌人。保留已拾取资源。`
+    lastRun.value = { title: `${getOperationDefinition(activeOperationMode.value).shortLabel}撤离失败`, body: failureBody, victory: false, stats: snapshotRunStats(false) }
     clearCombatFeedback()
     mode.value = 'settlement'
     saveGame()
+    return
+  }
+
+  if (activeOperationMode.value === 'survival' && operationTimeRemaining.value <= 0) {
+    completeVictory()
     return
   }
 
@@ -2584,49 +2796,14 @@ function update(delta: number) {
   }
 
   const allWavesCleared = currentWaveCleared && currentWave.value === totalWaves.value
-  if (allWavesCleared) {
-    highestCleared.value = Math.max(highestCleared.value, stage.value)
-    recordAllTaskEvents('clear')
-    recordAllTaskEvents('stage', stage.value)
-    if (stage.value % 25 === 0) recordAllTaskEvents('resource')
-    if (stage.value >= 3000 && stage.value % 50 === 0) recordAllTaskEvents('challenge')
-    const stageReward = rewardForStage(stage.value, kills.value)
-    const profile = getAttachmentDropProfile(stage.value)
-    const bossDefeated = stage.value % 10 === 0
-    const guaranteedRarity = guaranteedDropRarity(stage.value, dropPity, bossDefeated)
-    const shouldDrop = gameplayRandom() < Math.min(1, profile.dropChance * (1 + modifiers.dropRate))
-    const dropCount = attachmentDropCount(shouldDrop, guaranteedRarity)
-    const attachmentDrops = grantAttachmentDrops(dropCount, profile.rarityWeights, guaranteedRarity)
-    const bestRarity = attachmentDrops.reduce<AttachmentRarity>((best, item) => rarityRank(item.rarity) > rarityRank(best) ? item.rarity : best, '普通')
-    recordPityDrop(dropPity, stage.value, bestRarity, bossDefeated)
-    const rewardDoubled = gameplayRandom() < modifiers.doubleRewardChance
-    const rewardMultiplier = rewardDoubled ? 2 : 1
-    const reward: Reward = {
-      ...stageReward,
-      gold: Math.round(stageReward.gold * modifiers.goldGain * rewardMultiplier),
-      alloy: stageReward.alloy * rewardMultiplier,
-      parts: stageReward.parts * rewardMultiplier,
-      exp: stageReward.exp * rewardMultiplier,
-      attachments: attachmentDrops
-    }
-    resources.gold += reward.gold
-    runStats.goldEarned += reward.gold
-    resources.alloy += reward.alloy
-    resources.parts += reward.parts
-    grantExp(reward.exp)
-    settlementEquipNotice.value = null
-    lastRun.value = {
-      title: `第 ${stage.value} 关清场`,
-      body: attachmentDrops.length ? `${rewardDoubled ? '黄金后勤触发奖励翻倍；' : ''}缴获 ${attachmentDrops.map((item) => item.name).join('、')}，回基地可替换构筑。` : `${stageMeta.value.name} 已压制，本次未发现可用配件。`,
-      victory: true,
-      reward,
-      stats: snapshotRunStats(true)
-    }
-    announceBanner(attachmentDrops.length ? `缴获配件 · ${attachmentDrops[0].name}` : '任务完成 · 区域已清空', 'victory')
-    playSound('victory')
-    clearCombatFeedback()
-    mode.value = 'settlement'
-    saveGame()
+  if (allWavesCleared && activeOperationMode.value === 'survival') {
+    waveSpawnedCount.value = 0
+    spawnTimer = 0
+    recordedWaveIndexes.delete(currentWave.value)
+    waveStartTime = stageTimer.value
+    announceBanner('终段压力持续 · 坚守至倒计时结束', 'elite')
+  } else if (allWavesCleared) {
+    completeVictory()
   }
 }
 
@@ -2641,7 +2818,7 @@ function draw() {
   ctx.save()
   if (mode.value === 'battle' && screenShake > 0) ctx.translate((Math.random() - 0.5) * screenShake * 16, (Math.random() - 0.5) * screenShake * 16)
   if (sprites.battlefield?.complete) drawCoverImage(ctx, sprites.battlefield, width, height)
-  drawPlayArea(ctx, getPlayArea(width, height), width, height)
+  drawPlayArea(ctx, getPlayArea(width, height), width, height, getR5WarzoneTheme(stage.value))
 
   for (const drop of drops) {
     drawShadow(ctx, drop.x, drop.y + 7, drop.radius * 3, 0.18)
@@ -2720,10 +2897,20 @@ function draw() {
     ctx.lineTo(linked.x, linked.y)
     ctx.stroke()
   }
+  ctx.strokeStyle = 'rgba(104, 190, 225, 0.78)'
+  ctx.setLineDash([4, 5])
+  for (const enemy of enemies) {
+    const protector = wardenProtector(enemy)
+    if (!protector) continue
+    ctx.beginPath()
+    ctx.moveTo(enemy.x, enemy.y)
+    ctx.lineTo(protector.x, protector.y)
+    ctx.stroke()
+  }
   ctx.restore()
   for (const enemy of enemies) {
     const size = enemy.radius * (enemy.boss ? 3.6 : 3.2)
-    const kindColor: Record<EnemyKind, string> = { grunt: '#c66a4d', ranged: '#6f9eb2', fast: '#d2aa48', heavy: '#8d9b89', bomber: '#cf7040' }
+    const kindColor: Record<EnemyKind, string> = { grunt: '#c66a4d', ranged: '#6f9eb2', fast: '#d2aa48', heavy: '#8d9b89', bomber: '#cf7040', sniper: '#e75f68', medic: '#72c997', warden: '#69b9d8' }
     const outline = enemy.elite ? '#e5b84b' : kindColor[enemy.kind]
     drawShadow(ctx, enemy.x, enemy.y, size, enemy.boss ? 0.45 : 0.3)
     ctx.save()
@@ -2741,20 +2928,21 @@ function draw() {
       ctx.arc(enemy.x, enemy.y, r4Tuning.coordination.range, 0, Math.PI * 2)
       ctx.stroke()
     }
-    if (enemy.kind === 'ranged') {
+    if (enemy.kind === 'ranged' || enemy.kind === 'sniper') {
       ctx.setLineDash([3, 5])
       ctx.beginPath()
       ctx.arc(enemy.x, enemy.y, enemy.radius + 8, -0.65, 0.65)
       ctx.stroke()
       if (enemy.aimTime > 0) {
-        const aimProgress = 1 - enemy.aimTime / levelTuning.enemyWarnings.rangedAimSeconds
+        const aimProgress = 1 - enemy.aimTime / (enemy.kind === 'sniper' ? 1.15 : levelTuning.enemyWarnings.rangedAimSeconds)
         ctx.strokeStyle = aimProgress > 0.72 ? '#ff6b4a' : '#f2c14f'
         ctx.lineWidth = 1.5 + aimProgress * 2
         ctx.globalAlpha = 0.48 + aimProgress * 0.42
         ctx.setLineDash([10, 6])
         ctx.beginPath()
         ctx.moveTo(enemy.x, enemy.y)
-        ctx.lineTo(enemy.x + Math.cos(enemy.aimAngle) * levelTuning.enemyWarnings.rangedRange, enemy.y + Math.sin(enemy.aimAngle) * levelTuning.enemyWarnings.rangedRange)
+        const aimRange = enemy.kind === 'sniper' ? 540 : levelTuning.enemyWarnings.rangedRange
+        ctx.lineTo(enemy.x + Math.cos(enemy.aimAngle) * aimRange, enemy.y + Math.sin(enemy.aimAngle) * aimRange)
         ctx.stroke()
       }
     }
@@ -2801,6 +2989,18 @@ function draw() {
     }
     ctx.restore()
     drawSprite(ctx, enemySprite(enemy), enemy.x, enemy.y, size, enemy.angle)
+    if (enemy.kind === 'sniper' || enemy.kind === 'medic' || enemy.kind === 'warden') {
+      const marker = enemy.kind === 'sniper' ? '◎' : enemy.kind === 'medic' ? '+' : '◆'
+      ctx.save()
+      ctx.fillStyle = kindColor[enemy.kind]
+      ctx.strokeStyle = 'rgba(7, 9, 10, 0.9)'
+      ctx.lineWidth = 3
+      ctx.font = `900 ${compactViewport ? 15 : 13}px system-ui, sans-serif`
+      ctx.textAlign = 'center'
+      ctx.strokeText(marker, enemy.x, enemy.y - enemy.radius - 34)
+      ctx.fillText(marker, enemy.x, enemy.y - enemy.radius - 34)
+      ctx.restore()
+    }
     ctx.fillStyle = '#15120d'
     ctx.fillRect(enemy.x - enemy.radius, enemy.y - enemy.radius - 10, enemy.radius * 2, 4)
     ctx.fillStyle = '#78a866'
@@ -2811,7 +3011,7 @@ function draw() {
       ctx.fillStyle = enemy.armor > 0 ? '#7fc3df' : '#d66a4f'
       ctx.fillRect(enemy.x - enemy.radius, enemy.y - enemy.radius - 5, enemy.radius * 2 * Math.max(enemy.armor / enemy.maxArmor, 0), 3)
     }
-    if (enemy.elite || enemy.boss) {
+    if (enemy.elite || enemy.boss || enemy.kind === 'sniper' || enemy.kind === 'medic' || enemy.kind === 'warden') {
       const labelWidth = ctx.measureText(enemy.label).width
       const labelY = enemy.y - enemy.radius - 15
       ctx.fillStyle = 'rgba(12, 12, 10, 0.82)'
@@ -3201,10 +3401,17 @@ function startStageWithHealth(restoreHp: boolean) {
     bannerText.value = '背包超出容量，请先返回基地整理受保护配件'
     return
   }
+  const nextOperation = replayRuntime.running ? 'campaign' : selectedOperationMode.value
+  if (!debugStageSelection && !operationUnlocked(nextOperation, highestCleared.value)) {
+    bannerText.value = '完成第 500 关后开放独立行动'
+    selectedOperationMode.value = 'campaign'
+    return
+  }
+  activeOperationMode.value = nextOperation
   applyBaseStats()
   resetRunState(restoreHp)
   mode.value = 'battle'
-  announceBanner(`第 1 波 · ${currentWaveDefinition.value?.label}`, 'normal')
+  announceBanner(`${getOperationDefinition(activeOperationMode.value).shortLabel} · 第 1 波 · ${currentWaveDefinition.value?.label}`, 'normal')
   playSound('wave')
 }
 
@@ -3319,6 +3526,8 @@ onBeforeUnmount(() => {
     waveStatusText, bossHud, damageDirection, killNotice, elapsedSeconds, formatClock,
     skills, useSkill, upgradeChoices, chooseUpgrade,
     combatPower, fireRatePreview, nextEnemyPreview, stageType, adjustStage, stageDraft,
+    selectedOperationMode, operationDefinition, operationOptions, selectOperation,
+    operationObjectiveText, operationProgressText, operationTimeRemaining, isIndependentOperation,
     maxSelectableStage, commitStageDraft, debugStageSelection, stageRewardPreview,
     dropProfile, inventoryOverCapacity, startStage, stageLabel, expToNextLevel,
     expPercent, characterStats, isSaleMode, attachmentSwapLabel, inventoryNearCapacity,

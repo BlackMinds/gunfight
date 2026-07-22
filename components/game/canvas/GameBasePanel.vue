@@ -41,10 +41,27 @@
               <b>{{ nextEnemyPreview.label }}</b>
               <small>生命 {{ nextEnemyPreview.hp }} · 伤害 {{ nextEnemyPreview.damage }} · {{ stageType }}</small>
               <small v-if="nextEnemyPreview.stageBandLabel" class="r5-stage-intel" data-testid="r5-stage-intel">
-                R5 战区：{{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · Boss {{ nextEnemyPreview.bossPhaseCount }} 阶段 · 建议 DPS {{ nextEnemyPreview.expectedDps }} / 生命 {{ nextEnemyPreview.expectedMaxHp }}
+                R5 战区：{{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · {{ operationDefinition.id === 'survival' ? '无 Boss · 90 秒连续压力' : `Boss ${nextEnemyPreview.bossPhaseCount} 阶段` }} · 建议 DPS {{ nextEnemyPreview.expectedDps }} / 生命 {{ nextEnemyPreview.expectedMaxHp }}
+              </small>
+              <small v-if="nextEnemyPreview.warzoneLandmark" class="r5-map-intel" data-testid="r5-map-intel">
+                地图：{{ nextEnemyPreview.warzoneLandmark }} · 走位重点：{{ nextEnemyPreview.warzonePositioningRule }}
               </small>
               <small v-if="nextEnemyPreview.mechanicLabels.length">累计机制：{{ nextEnemyPreview.mechanicLabels.join(' / ') }}</small>
             </article>
+          </div>
+          <div class="operation-picker" data-testid="operation-picker" aria-label="行动类型选择">
+            <button
+              v-for="operation in operationOptions"
+              :key="operation.id"
+              type="button"
+              :class="{ active: selectedOperationMode === operation.id }"
+              :disabled="!operation.unlocked"
+              :aria-pressed="selectedOperationMode === operation.id"
+              @click="selectOperation(operation.id)"
+            >
+              <b>{{ operation.label }}</b>
+              <span>{{ operation.unlocked ? operation.summary : '完成第 500 关后开放' }}</span>
+            </button>
           </div>
           <div class="stage-picker" aria-label="关卡选择">
             <button type="button" aria-label="减少十关" @click="adjustStage(-10)">-10</button>
@@ -58,7 +75,7 @@
           </div>
           <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · R4 / R5 发布验收已完成，正式版本上限为第 10000 关</p>
           <div class="base-actions">
-            <button type="button" class="primary" data-testid="deploy-stage" :disabled="inventoryOverCapacity" @click="startStage">部署第 {{ stageLabel }} 关</button>
+            <button type="button" class="primary" data-testid="deploy-stage" :disabled="inventoryOverCapacity" @click="startStage">部署 · {{ operationDefinition.label }}</button>
             <p v-if="inventoryOverCapacity" class="capacity-blocker" data-testid="inventory-capacity-blocker" role="alert">背包超出容量：请取消部分收藏保护、装备或出售配件后再部署。</p>
           </div>
           <div class="reward-preview" aria-label="奖励预览">
@@ -258,6 +275,7 @@ import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
 
 const {
   mode, resources, player, combatPower, damagePreview, fireRatePreview, nextEnemyPreview,
+  operationOptions, selectedOperationMode, operationDefinition, selectOperation,
   stageType, adjustStage, stageDraft, maxSelectableStage, commitStageDraft,
   debugStageSelection, stageRewardPreview, dropProfile, inventoryOverCapacity, startStage,
   stageLabel, nextLevelExp, expToNextLevel, expPercent, characterStats, isSaleMode,

@@ -1,7 +1,7 @@
 import { r4EnemyMultipliersForStage } from './r4'
 import { r5EnemyMultipliersForStage, r5RewardBudgetForStage } from './r5'
 
-export type EnemyKind = 'grunt' | 'ranged' | 'fast' | 'heavy' | 'bomber'
+export type EnemyKind = 'grunt' | 'ranged' | 'fast' | 'heavy' | 'bomber' | 'sniper' | 'medic' | 'warden'
 
 export const PUBLISHED_STAGE_CAP = 10000
 
@@ -27,7 +27,10 @@ const baseEnemy = {
   ranged: { label: '火力手', hp: 30, damage: 6, speed: 66, hpRate: 0.82, damageRate: 0.92, speedRate: 0.92 },
   fast: { label: '迅捷兵', hp: 24, damage: 5, speed: 118, hpRate: 0.72, damageRate: 0.82, speedRate: 1.42 },
   heavy: { label: '重装兵', hp: 92, damage: 12, speed: 48, hpRate: 1.75, damageRate: 1.34, speedRate: 0.72 },
-  bomber: { label: '爆破兵', hp: 32, damage: 18, speed: 86, hpRate: 0.9, damageRate: 1.6, speedRate: 1.08 }
+  bomber: { label: '爆破兵', hp: 32, damage: 18, speed: 86, hpRate: 0.9, damageRate: 1.6, speedRate: 1.08 },
+  sniper: { label: '狙击手', hp: 26, damage: 11, speed: 58, hpRate: 0.78, damageRate: 1.48, speedRate: 0.82 },
+  medic: { label: '维修兵', hp: 42, damage: 5, speed: 70, hpRate: 1.08, damageRate: 0.72, speedRate: 0.9 },
+  warden: { label: '护卫兵', hp: 78, damage: 9, speed: 54, hpRate: 1.48, damageRate: 1.05, speedRate: 0.76 }
 } satisfies Record<EnemyKind, Record<string, number | string>>
 
 export function getDifficultyMultipliers(level: number) {

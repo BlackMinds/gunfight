@@ -36,7 +36,9 @@ function createContext() {
     currentWaveDefinition: ref({ label: '测试波次' }),
     wavePlan: ref([]),
     waveStatusText: ref('交战中'),
-    nextEnemyPreview: ref({ stageBandLabel: '终局战争', eliteAffixCount: 4, bossPhaseCount: 5 }),
+    nextEnemyPreview: ref({ stageBandLabel: '终局战争', warzoneLandmark: '终局汇聚点', eliteAffixCount: 4, bossPhaseCount: 5 }),
+    operationDefinition: ref({ shortLabel: '生存' }),
+    operationProgressText: ref('剩余 90 秒 · 击杀 0'),
     bossHud: reactive({ visible: false, phaseLabel: '', label: '', hpPercent: 0, hp: 0, maxHp: 0 }),
     damageDirection: reactive({ life: 0, angle: 0 }),
     killNotice: ref(''),
@@ -88,6 +90,7 @@ describe('移动端战斗 HUD', () => {
     const root = await mountHud()
     const intel = root.querySelector<HTMLElement>('[data-testid="combat-stage-intel"]')
     expect(intel?.textContent).toContain('终局战争')
+    expect(intel?.textContent).toContain('终局汇聚点')
     expect(intel?.textContent).toContain('4 词缀')
     expect(intel?.textContent).toContain('Boss 5 阶段')
   })

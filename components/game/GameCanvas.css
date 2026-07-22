@@ -4471,10 +4471,61 @@
 }
 
 .game-screen .mission-briefing .stage-picker,
+.game-screen .mission-briefing .operation-picker,
 .game-screen .mission-briefing .reward-preview,
 .game-screen .mission-briefing .base-actions,
 .game-screen .mission-briefing .debug-stage-note {
   grid-column: 1 / -1;
+}
+
+.game-screen .operation-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.game-screen .operation-picker button {
+  min-width: 0;
+  padding: 9px 11px;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  color: #b9c4c8;
+  border: 1px solid rgba(119, 183, 215, 0.2);
+  border-radius: 7px;
+  background: rgba(8, 13, 15, 0.62);
+}
+
+.game-screen .operation-picker button b {
+  color: #edf1ed;
+  font-size: 13px;
+}
+
+.game-screen .operation-picker button span {
+  overflow: hidden;
+  color: #8fa0a6;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-screen .operation-picker button.active {
+  border-color: rgba(240, 191, 87, 0.72);
+  background: linear-gradient(135deg, rgba(240, 191, 87, 0.18), rgba(39, 70, 78, 0.28));
+  box-shadow: inset 0 0 0 1px rgba(240, 191, 87, 0.14);
+}
+
+.game-screen .operation-picker button.active b {
+  color: #f4d47a;
+}
+
+.game-screen .operation-picker button:disabled {
+  opacity: 0.45;
+}
+
+.game-screen .r5-map-intel {
+  color: #9fd4df;
 }
 
 .game-screen .mission-briefing .stage-picker {
@@ -4519,6 +4570,22 @@
 
   .game-screen .mission-briefing .base-intel {
     grid-template-columns: 1fr;
+  }
+
+  .game-screen .operation-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .game-screen .operation-picker button {
+    min-height: 54px;
+    padding: 8px;
+  }
+
+  .game-screen .operation-picker button span {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .game-screen .mission-briefing .stage-picker {

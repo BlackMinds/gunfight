@@ -29,6 +29,17 @@ export type R5StageBand = {
   mechanics: R5EnemyMechanics
 }
 
+export type R5WarzoneTheme = {
+  bandId: R5StageBand['id']
+  motif: 'assembly-lines' | 'hunting-arcs' | 'storm-cuts' | 'fortress-cross' | 'radiation-blocks' | 'deep-trenches' | 'black-rings' | 'finale-rays'
+  floor: string
+  grid: string
+  boundary: string
+  accent: string
+  landmark: string
+  positioningRule: string
+}
+
 const mechanics = (suppressiveMark: boolean, shieldLink: boolean, trackingDeathZone: boolean, commandPulse: boolean): R5EnemyMechanics => ({
   suppressiveMark,
   shieldLink,
@@ -46,6 +57,17 @@ export const r5StageBands = [
   { id: 'black-domain', label: '黑域行动', minStage: 7501, maxStage: 9000, hp: [7.20, 8.70], damage: [2.50, 2.80], speed: [1.06, 1.07], extraWaveEnemies: 5, spawnIntervalMultiplier: 0.75, eliteAffixCount: 4, bossPhaseCount: 5, mechanics: mechanics(true, true, true, true) },
   { id: 'end-war', label: '终局战争', minStage: 9001, maxStage: 10000, hp: [8.70, 10.00], damage: [2.80, 3.00], speed: [1.07, 1.08], extraWaveEnemies: 6, spawnIntervalMultiplier: 0.73, eliteAffixCount: 4, bossPhaseCount: 5, mechanics: mechanics(true, true, true, true) }
 ] as const satisfies readonly R5StageBand[]
+
+export const r5WarzoneThemes = [
+  { bandId: 'industrial-blockade', motif: 'assembly-lines', floor: '#172126', grid: '#5c8394', boundary: '#f0bd54', accent: '#d87b42', landmark: '装配线封锁带', positioningRule: '左右换线' },
+  { bandId: 'wasteland-hunt', motif: 'hunting-arcs', floor: '#2b241b', grid: '#a98558', boundary: '#e1a84f', accent: '#c65f3f', landmark: '荒原追踪弧', positioningRule: '绕圈拉扯' },
+  { bandId: 'wasteland-storm', motif: 'storm-cuts', floor: '#20282d', grid: '#7699ab', boundary: '#9dd7e8', accent: '#62b8d5', landmark: '风暴航道', positioningRule: '斜向穿越' },
+  { bandId: 'alloy-fortress', motif: 'fortress-cross', floor: '#182427', grid: '#608b91', boundary: '#f0a84d', accent: '#de713c', landmark: '中央合金堡', positioningRule: '四角转移' },
+  { bandId: 'radiation-city', motif: 'radiation-blocks', floor: '#1e281b', grid: '#74945b', boundary: '#b4d65c', accent: '#d1e56a', landmark: '污染街块', positioningRule: '避开聚集区' },
+  { bandId: 'deep-front', motif: 'deep-trenches', floor: '#251a1a', grid: '#875b4f', boundary: '#d38b5d', accent: '#b74d42', landmark: '纵深壕沟', positioningRule: '前后换层' },
+  { bandId: 'black-domain', motif: 'black-rings', floor: '#171521', grid: '#665b8c', boundary: '#a88ce8', accent: '#7bd2d0', landmark: '黑域扫描环', positioningRule: '环形机动' },
+  { bandId: 'end-war', motif: 'finale-rays', floor: '#251b17', grid: '#a17d5a', boundary: '#f0c85b', accent: '#e75b4f', landmark: '终局汇聚点', positioningRule: '持续换位' }
+] as const satisfies readonly R5WarzoneTheme[]
 
 export const r5Tuning = {
   affixes: {
@@ -86,6 +108,19 @@ export function getR5StageBand(stage: number): R5StageBand | null {
   if (stage < R5_STAGE_MIN) return null
   const current = clampedStage(stage)
   return r5StageBands.find((band) => current >= band.minStage && current <= band.maxStage) ?? r5StageBands[r5StageBands.length - 1]
+}
+
+export function getR5WarzoneTheme(stage: number): R5WarzoneTheme | null {
+  const band = getR5StageBand(stage)
+  return band ? r5WarzoneThemes.find((theme) => theme.bandId === band.id) ?? null : null
+}
+
+export function r5SpecialistKindsForStage(stage: number): EnemyKind[] {
+  const kinds: EnemyKind[] = []
+  if (stage >= 501) kinds.push('sniper')
+  if (stage >= 1501) kinds.push('medic')
+  if (stage >= 3001) kinds.push('warden')
+  return kinds
 }
 
 export function r5EnemyMultipliersForStage(stage: number) {
@@ -152,7 +187,7 @@ export function resolveR5EliteAffixes(stage: number, waveIndex: number, spawnInd
   const band = getR5StageBand(stage)
   const pool = availableR5EliteAffixes(stage)
   if (!band || !pool.length) return []
-  const kindOffset = kind ? ['grunt', 'ranged', 'fast', 'heavy', 'bomber'].indexOf(kind) : 0
+  const kindOffset = kind ? ['grunt', 'ranged', 'fast', 'heavy', 'bomber', 'sniper', 'medic', 'warden'].indexOf(kind) : 0
   const start = Math.abs(stage * 19 + waveIndex * 11 + spawnIndex * 5 + Math.max(0, kindOffset)) % pool.length
   return Array.from({ length: Math.min(band.eliteAffixCount, pool.length) }, (_, index) => pool[(start + index) % pool.length])
 }
@@ -184,12 +219,13 @@ export function bossPhasesForStage(stage: number, basePhases: readonly BossPhase
 
 export function r5WaveKindsForStage(stage: number, phase: WavePhase, baseKinds: readonly EnemyKind[]) {
   if (stage < R5_STAGE_MIN) return [...baseKinds]
+  const specialists = r5SpecialistKindsForStage(stage)
   const additions: Partial<Record<WavePhase, EnemyKind[]>> = {
-    warmup: stage >= 3001 ? ['grunt', 'fast'] : ['grunt'],
-    'ranged-pressure': ['ranged', stage >= 1001 ? 'heavy' : 'grunt'],
-    'charge-burst': ['fast', 'bomber'],
-    'armor-check': ['heavy', stage >= 2001 ? 'bomber' : 'ranged'],
-    climax: stage >= 5001 ? ['ranged', 'heavy', 'bomber', 'fast'] : ['heavy', 'ranged']
+    warmup: stage >= 1501 ? ['grunt', 'medic'] : ['grunt'],
+    'ranged-pressure': ['ranged', 'sniper', stage >= 1001 ? 'heavy' : 'grunt'],
+    'charge-burst': ['fast', 'bomber', ...(stage >= 1501 ? ['medic' as EnemyKind] : [])],
+    'armor-check': ['heavy', stage >= 3001 ? 'warden' : stage >= 2001 ? 'bomber' : 'ranged'],
+    climax: stage >= 3001 ? ['ranged', 'sniper', 'heavy', 'warden', 'bomber', 'fast', ...specialists] : ['heavy', 'ranged', ...specialists]
   }
   return [...baseKinds, ...(additions[phase] ?? [])]
 }

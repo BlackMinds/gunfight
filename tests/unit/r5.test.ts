@@ -5,12 +5,15 @@ import {
   availableR5EliteAffixes,
   bossPhasesForStage,
   getR5StageBand,
+  getR5WarzoneTheme,
   r5BossHpMultiplierForStage,
   r5CampaignGrowthForHighestCleared,
   r5EnemyMechanicsForStage,
   r5EnemyMultipliersForStage,
   r5GrowthAnchors,
   r5ShieldLinkPairEligible,
+  r5SpecialistKindsForStage,
+  r5WarzoneThemes,
   r5WavePressureForStage,
   resolveR5EliteAffixes
 } from '../../shared/game/r5'
@@ -39,6 +42,27 @@ describe('R5 第 501～10000 关配置', () => {
     }
     expect(r5WavePressureForStage(501)).toEqual({ extraEnemies: 2, spawnIntervalMultiplier: 0.9 })
     expect(r5WavePressureForStage(10000)).toEqual({ extraEnemies: 6, spawnIntervalMultiplier: 0.73 })
+  })
+
+  it('八个战区使用唯一地图视觉语法并给出定位提示', () => {
+    expect(r5WarzoneThemes).toHaveLength(8)
+    expect(new Set(r5WarzoneThemes.map((theme) => theme.motif)).size).toBe(8)
+    expect(new Set(r5WarzoneThemes.map((theme) => theme.accent)).size).toBe(8)
+    expect(new Set(r5WarzoneThemes.map((theme) => theme.landmark)).size).toBe(8)
+    expect(getR5WarzoneTheme(501)?.landmark).toBe('装配线封锁带')
+    expect(getR5WarzoneTheme(10000)?.positioningRule).toBe('持续换位')
+    expect(getR5WarzoneTheme(500)).toBeNull()
+  })
+
+  it('三个职责型敌人按战区解锁并进入对应波次', () => {
+    expect(r5SpecialistKindsForStage(500)).toEqual([])
+    expect(r5SpecialistKindsForStage(501)).toEqual(['sniper'])
+    expect(r5SpecialistKindsForStage(1501)).toEqual(['sniper', 'medic'])
+    expect(r5SpecialistKindsForStage(3001)).toEqual(['sniper', 'medic', 'warden'])
+    expect(createWavePlan(501)[1].kinds).toContain('sniper')
+    expect(createWavePlan(1501)[0].kinds).toContain('medic')
+    expect(createWavePlan(3001)[3].kinds).toContain('warden')
+    expect(scaleEnemyStats(3001, 'sniper').label).toBe('狙击手')
   })
 
   it('机制、词缀数与 Boss 阶段按战区累积', () => {
