@@ -1,6 +1,6 @@
 <template>
   <main class="game-screen" :class="`mode-${mode}`">
-    <canvas ref="canvasRef" class="battlefield" aria-label="枪火放置战斗画面" />
+    <canvas ref="canvasRef" class="battlefield" aria-label="俯视战场地图，金色边界内为当前行动区域" />
 
     <section v-if="replayUi.visible && replayUi.status !== 'complete'" class="r3-replay-status" data-testid="replay-status" aria-live="polite">
       <small>{{ replayUi.phaseLabel }} 开发回放 · {{ replayUi.status }}</small>

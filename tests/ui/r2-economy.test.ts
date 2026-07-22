@@ -65,10 +65,16 @@ describe('R2 经济闭环 UI 注入', () => {
 
   it('基地按部署、背包、长期养成顺序呈现', async () => {
     const host = await mountGame()
+    const briefing = query(host, '[data-testid="mission-briefing"]')
     const deploy = query(host, '[data-testid="deploy-stage"]')
     const backpack = query(host, '.base-backpack')
     const progression = query(host, '.progression-panel')
 
+    expect(briefing.getAttribute('aria-labelledby')).toBe('mission-briefing-title')
+    expect(briefing.querySelector('h2')?.textContent).toContain('部署简报')
+    expect(briefing.querySelectorAll('.stage-picker button')).toHaveLength(4)
+    expect(briefing.querySelectorAll('.reward-preview article')).toHaveLength(4)
+    expect(query(host, '.battlefield').getAttribute('aria-label')).toContain('金色边界')
     expect(deploy.compareDocumentPosition(backpack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(backpack.compareDocumentPosition(progression) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })

@@ -22,55 +22,64 @@
             角色 Lv.<b>{{ player.level }}</b>
           </span>
         </div>
-        <div class="base-intel">
-          <article>
-            <span>当前战力</span>
-            <b>{{ combatPower }}</b>
-            <small>伤害 {{ damagePreview }} · 射速 {{ fireRatePreview }}/秒 · 生命 {{ player.maxHp }}</small>
-          </article>
-          <article>
-            <span>下一关敌情</span>
-            <b>{{ nextEnemyPreview.label }}</b>
-            <small>生命 {{ nextEnemyPreview.hp }} · 伤害 {{ nextEnemyPreview.damage }} · {{ stageType }}</small>
-            <small v-if="nextEnemyPreview.stageBandLabel" class="r5-stage-intel" data-testid="r5-stage-intel">
-              R5 战区：{{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · Boss {{ nextEnemyPreview.bossPhaseCount }} 阶段 · 建议 DPS {{ nextEnemyPreview.expectedDps }} / 生命 {{ nextEnemyPreview.expectedMaxHp }}
-            </small>
-            <small v-if="nextEnemyPreview.mechanicLabels.length">累计机制：{{ nextEnemyPreview.mechanicLabels.join(' / ') }}</small>
-          </article>
-        </div>
-        <div class="stage-picker" aria-label="关卡选择">
-          <button type="button" @click="adjustStage(-10)">-10</button>
-          <button type="button" @click="adjustStage(-1)">-1</button>
-          <label>
-            <span>目标关卡</span>
-            <input v-model.number="stageDraft" type="number" min="1" :max="maxSelectableStage" @change="commitStageDraft" @blur="commitStageDraft" @keyup.enter="commitStageDraft" />
-          </label>
-          <button type="button" @click="adjustStage(1)">+1</button>
-          <button type="button" @click="adjustStage(10)">+10</button>
-        </div>
-        <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · R4 / R5 发布验收已完成，正式版本上限为第 10000 关</p>
-        <div class="reward-preview" aria-label="奖励预览">
-          <article>
-            <span>预计金币</span>
-            <b>{{ stageRewardPreview.gold }}</b>
-          </article>
-          <article>
-            <span>预计合金</span>
-            <b>{{ stageRewardPreview.alloy }}</b>
-          </article>
-          <article>
-            <span>配件概率</span>
-            <b>{{ dropProfile.dropChance }}%</b>
-          </article>
-          <article>
-            <span>可能品质</span>
-            <b>{{ dropProfile.raritySummary }}</b>
-          </article>
-        </div>
-        <div class="base-actions">
-          <button type="button" class="primary" data-testid="deploy-stage" :disabled="inventoryOverCapacity" @click="startStage">部署第 {{ stageLabel }} 关</button>
-          <p v-if="inventoryOverCapacity" class="capacity-blocker" data-testid="inventory-capacity-blocker" role="alert">背包超出容量：请取消部分收藏保护、装备或出售配件后再部署。</p>
-        </div>
+        <section class="mission-briefing" data-testid="mission-briefing" aria-labelledby="mission-briefing-title">
+          <header class="mission-briefing__head">
+            <div>
+              <p class="panel-kicker">下一步行动</p>
+              <h2 id="mission-briefing-title">第 {{ stageLabel }} 关部署简报</h2>
+            </div>
+            <span>{{ stageType }}</span>
+          </header>
+          <div class="base-intel">
+            <article>
+              <span>当前战力</span>
+              <b>{{ combatPower }}</b>
+              <small>伤害 {{ damagePreview }} · 射速 {{ fireRatePreview }}/秒 · 生命 {{ player.maxHp }}</small>
+            </article>
+            <article>
+              <span>下一关敌情</span>
+              <b>{{ nextEnemyPreview.label }}</b>
+              <small>生命 {{ nextEnemyPreview.hp }} · 伤害 {{ nextEnemyPreview.damage }} · {{ stageType }}</small>
+              <small v-if="nextEnemyPreview.stageBandLabel" class="r5-stage-intel" data-testid="r5-stage-intel">
+                R5 战区：{{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · Boss {{ nextEnemyPreview.bossPhaseCount }} 阶段 · 建议 DPS {{ nextEnemyPreview.expectedDps }} / 生命 {{ nextEnemyPreview.expectedMaxHp }}
+              </small>
+              <small v-if="nextEnemyPreview.mechanicLabels.length">累计机制：{{ nextEnemyPreview.mechanicLabels.join(' / ') }}</small>
+            </article>
+          </div>
+          <div class="stage-picker" aria-label="关卡选择">
+            <button type="button" aria-label="减少十关" @click="adjustStage(-10)">-10</button>
+            <button type="button" aria-label="减少一关" @click="adjustStage(-1)">-1</button>
+            <label>
+              <span>目标关卡</span>
+              <input v-model.number="stageDraft" type="number" min="1" :max="maxSelectableStage" @change="commitStageDraft" @blur="commitStageDraft" @keyup.enter="commitStageDraft" />
+            </label>
+            <button type="button" aria-label="增加一关" @click="adjustStage(1)">+1</button>
+            <button type="button" aria-label="增加十关" @click="adjustStage(10)">+10</button>
+          </div>
+          <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · R4 / R5 发布验收已完成，正式版本上限为第 10000 关</p>
+          <div class="base-actions">
+            <button type="button" class="primary" data-testid="deploy-stage" :disabled="inventoryOverCapacity" @click="startStage">部署第 {{ stageLabel }} 关</button>
+            <p v-if="inventoryOverCapacity" class="capacity-blocker" data-testid="inventory-capacity-blocker" role="alert">背包超出容量：请取消部分收藏保护、装备或出售配件后再部署。</p>
+          </div>
+          <div class="reward-preview" aria-label="奖励预览">
+            <article>
+              <span>预计金币</span>
+              <b>{{ stageRewardPreview.gold }}</b>
+            </article>
+            <article>
+              <span>预计合金</span>
+              <b>{{ stageRewardPreview.alloy }}</b>
+            </article>
+            <article>
+              <span>配件概率</span>
+              <b>{{ dropProfile.dropChance }}%</b>
+            </article>
+            <article>
+              <span>可能品质</span>
+              <b>{{ dropProfile.raritySummary }}</b>
+            </article>
+          </div>
+        </section>
         <div class="character-panel" aria-label="角色属性">
           <div class="character-level">
             <span>角色等级</span>

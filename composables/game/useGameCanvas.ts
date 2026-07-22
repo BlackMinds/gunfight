@@ -1939,9 +1939,78 @@ function drawPlayArea(ctx: CanvasRenderingContext2D, area: PlayArea, width: numb
   ctx.fillRect(0, area.y + area.height, width, height - area.y - area.height)
   ctx.fillRect(0, area.y, area.x, area.height)
   ctx.fillRect(area.x + area.width, area.y, width - area.x - area.width, area.height)
-  ctx.strokeStyle = 'rgba(229, 184, 75, 0.45)'
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(area.x, area.y, area.width, area.height)
+  ctx.clip()
+  ctx.strokeStyle = 'rgba(119, 183, 215, 0.12)'
+  ctx.lineWidth = 1
+  ctx.setLineDash([3, 9])
+  for (let column = 1; column < 6; column++) {
+    const x = area.x + area.width * column / 6
+    ctx.beginPath()
+    ctx.moveTo(x, area.y)
+    ctx.lineTo(x, area.y + area.height)
+    ctx.stroke()
+  }
+  for (let row = 1; row < 4; row++) {
+    const y = area.y + area.height * row / 4
+    ctx.beginPath()
+    ctx.moveTo(area.x, y)
+    ctx.lineTo(area.x + area.width, y)
+    ctx.stroke()
+  }
+  ctx.setLineDash([10, 12])
+  ctx.strokeStyle = 'rgba(119, 183, 215, 0.22)'
+  ctx.beginPath()
+  ctx.moveTo(area.x, area.y + area.height / 2)
+  ctx.lineTo(area.x + area.width, area.y + area.height / 2)
+  ctx.stroke()
+  ctx.restore()
+
+  const inset = Math.max(5, Math.min(area.width, area.height) * 0.018)
+  ctx.setLineDash([8, 7])
+  ctx.strokeStyle = 'rgba(119, 183, 215, 0.34)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(area.x + inset, area.y + inset, area.width - inset * 2, area.height - inset * 2)
+
+  ctx.setLineDash([])
+  ctx.shadowColor = 'rgba(229, 184, 75, 0.32)'
+  ctx.shadowBlur = 9
+  ctx.strokeStyle = 'rgba(229, 184, 75, 0.68)'
   ctx.lineWidth = 2
   ctx.strokeRect(area.x, area.y, area.width, area.height)
+
+  ctx.shadowBlur = 0
+  ctx.strokeStyle = '#f0bf57'
+  ctx.lineWidth = 3
+  const corner = Math.max(14, Math.min(28, Math.min(area.width, area.height) * 0.09))
+  const corners = [
+    [area.x, area.y, 1, 1],
+    [area.x + area.width, area.y, -1, 1],
+    [area.x, area.y + area.height, 1, -1],
+    [area.x + area.width, area.y + area.height, -1, -1]
+  ] as const
+  for (const [x, y, horizontal, vertical] of corners) {
+    ctx.beginPath()
+    ctx.moveTo(x + horizontal * corner, y)
+    ctx.lineTo(x, y)
+    ctx.lineTo(x, y + vertical * corner)
+    ctx.stroke()
+  }
+
+  const compact = width <= 520
+  const label = compact ? '行动区' : '行动区域 / ACTIVE FIELD'
+  ctx.font = `800 ${compact ? 11 : 12}px system-ui, sans-serif`
+  const labelWidth = ctx.measureText(label).width + 18
+  const labelX = compact ? area.x + area.width - labelWidth - 9 : area.x + 9
+  const labelY = compact ? area.y + 50 : area.y + area.height - 33
+  ctx.fillStyle = 'rgba(7, 10, 11, 0.86)'
+  ctx.fillRect(labelX, labelY, labelWidth, 24)
+  ctx.fillStyle = '#f5d57c'
+  ctx.textAlign = 'left'
+  ctx.fillText(label, labelX + 9, labelY + 16)
   ctx.restore()
 }
 
