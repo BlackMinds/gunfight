@@ -5,6 +5,7 @@ import {
   buildAttachmentComparison,
   buildAttachmentDecision,
   buildAttachmentDimensions,
+  buildAttachmentTags,
   combineAffixBonuses,
   normalizeBonus,
   rollSubAffixes
@@ -71,5 +72,11 @@ describe('attachment domain', () => {
     const epic = attachment({ rarity: '史诗', level: 4 })
     expect(attachmentMaxLevel(epic)).toBe(10)
     expect(attachmentUpgradeCost(epic)).toBe(6)
+  })
+
+  it('根据实际词条稳定生成最多两个流派标签', () => {
+    expect(buildAttachmentTags(attachment({ bonuses: { maxHp: 40, speed: 0.08 } }))).toEqual(['生存'])
+    expect(buildAttachmentTags(attachment({ bonuses: { damage: 0.2, pierce: 2, expGain: 0.1 } }))).toEqual(['穿透', '输出'])
+    expect(buildAttachmentTags(attachment({ bonuses: { pickup: 30, expGain: 0.2 } }))).toEqual(['经济'])
   })
 })

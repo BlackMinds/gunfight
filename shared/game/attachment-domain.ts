@@ -22,6 +22,8 @@ export type AttachmentDimension = {
   delta: number
   summary: string
 }
+export const attachmentBuildTags = ['输出', '生存', '经济', '穿透'] as const
+export type AttachmentBuildTag = (typeof attachmentBuildTags)[number]
 
 type AttachmentBonusMap = NonNullable<Attachment['bonuses']>
 
@@ -159,6 +161,25 @@ export function buildAttachmentDimensions(current: Attachment | undefined, next:
     { key: 'survival', label: '生存', current: before.survival, next: after.survival, delta: after.survival - before.survival, summary: '最大生命与移动容错' },
     { key: 'utility', label: '功能', current: before.utility, next: after.utility, delta: after.utility - before.utility, summary: '拾取范围与经验收益' }
   ].map((dimension) => ({ ...dimension, current: Math.round(dimension.current * 10) / 10, next: Math.round(dimension.next * 10) / 10, delta: Math.round(dimension.delta * 10) / 10 })) as AttachmentDimension[]
+}
+
+export function buildAttachmentTags(item: Attachment): AttachmentBuildTag[] {
+  const bonuses = item.bonuses ?? {}
+  const scores: Record<Exclude<AttachmentBuildTag, '穿透'>, number> = {
+    输出: (bonuses.damage ?? 0) * 100 + (bonuses.fireRate ?? 0) * 80 + (bonuses.critRate ?? 0) * 90,
+    生存: (bonuses.maxHp ?? 0) + (bonuses.speed ?? 0) * 120,
+    经济: (bonuses.pickup ?? 0) * 0.7 + (bonuses.expGain ?? 0) * 120
+  }
+  const tags: AttachmentBuildTag[] = []
+  if ((bonuses.pierce ?? 0) > 0 || item.specialEffectKey === 'no-pierce-falloff' || item.specialEffectKey === 'void-ammo') tags.push('穿透')
+  const ranked = (Object.entries(scores) as Array<[Exclude<AttachmentBuildTag, '穿透'>, number]>)
+    .filter(([, score]) => score > 0)
+    .sort((a, b) => b[1] - a[1] || attachmentBuildTags.indexOf(a[0]) - attachmentBuildTags.indexOf(b[0]))
+  for (const [tag] of ranked) {
+    if (tags.length >= 2) break
+    tags.push(tag)
+  }
+  return tags.length ? tags : ['输出']
 }
 
 export function buildAttachmentDecision(current: Attachment | undefined, next: Attachment): AttachmentDecision {

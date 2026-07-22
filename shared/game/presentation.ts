@@ -1,4 +1,6 @@
 import { scaleEnemyStats, type EnemyKind } from './formulas'
+import { bossDefinitionForStage } from './bosses'
+import { enemyFactionDefinitions, enemyFactionFor } from './factions'
 import { eliteAffixLabels, r4MechanicLabels, resolveEliteAffixes, type EliteAffixId } from './r4'
 import { getR5StageBand, getR5WarzoneTheme, r5BossHpMultiplierForStage, r5EliteAffixLabels, r5GrowthBudgetForStage, r5MechanicLabels, resolveR5EliteAffixes } from './r5'
 import { levelTuning, resolvedBossPhases } from './waves'
@@ -11,7 +13,11 @@ export const enemyKindLabels: Record<EnemyKind, string> = {
   bomber: '爆破兵',
   sniper: '狙击手',
   medic: '维修兵',
-  warden: '护卫兵'
+  warden: '护卫兵',
+  shield: '护盾兵',
+  commander: '指挥兵',
+  splitter: '分裂兵',
+  stealth: '隐形兵'
 }
 
 export function getStageTypeLabel(stage: number) {
@@ -25,6 +31,8 @@ export function getStageTypeLabel(stage: number) {
 
 export function getEnemyPreview(stage: number) {
   const boss = stage % 10 === 0
+  const bossDefinition = bossDefinitionForStage(stage)
+  const faction = enemyFactionFor(stage)
   const elite = !boss && stage % 5 === 0
   const kind: EnemyKind = boss ? levelTuning.boss.kind : elite ? 'fast' : 'grunt'
   const stats = scaleEnemyStats(stage, kind)
@@ -38,7 +46,8 @@ export function getEnemyPreview(stage: number) {
   const multipliers = boss ? levelTuning.boss.multipliers : elite ? levelTuning.elite.multipliers : { hp: 1, damage: 1, speed: 1, radius: 1 }
   return {
     kind,
-    label: boss ? levelTuning.boss.label : elite ? `${affixLabels.length ? `${affixLabels.join('·')} · ` : ''}精英${stats.label}` : stats.label,
+    label: boss ? bossDefinition.label : elite ? `${affixLabels.length ? `${affixLabels.join('·')} · ` : ''}精英${stats.label}` : stats.label,
+    bossSummary: boss ? bossDefinition.summary : '',
     hp: Math.round(stats.hp * multipliers.hp * (boss ? r5BossHpMultiplierForStage(stage) : 1)),
     damage: Math.round(stats.damage * multipliers.damage),
     speed: Math.round(stats.speed * multipliers.speed),
@@ -47,6 +56,9 @@ export function getEnemyPreview(stage: number) {
     affixes,
     affixLabels,
     mechanicLabels,
+    faction,
+    factionLabel: enemyFactionDefinitions[faction].label,
+    factionSummary: enemyFactionDefinitions[faction].summary,
     stageBandLabel: stageBand?.label ?? '',
     warzoneLandmark: warzoneTheme?.landmark ?? '',
     warzonePositioningRule: warzoneTheme?.positioningRule ?? '',

@@ -34,6 +34,8 @@ export type Attachment = {
   templateKey?: string
   roll?: number
   level?: number
+  stars?: number
+  breakthrough?: boolean
   favorite?: boolean
   mainAffix?: AttachmentAffix
   subAffixes?: AttachmentAffix[]
@@ -82,8 +84,22 @@ export type WeaponDefinition = {
   traits: string[]
 }
 
-export type WeaponProgress = { level: number; stars: number }
+export type WeaponAffixKey = 'damage' | 'fire-rate' | 'crit-rate' | 'magazine' | 'reload' | 'pierce' | 'status-chance'
+export type WeaponAffix = { key: WeaponAffixKey; label: string; value: number }
+export type WeaponProgress = { level: number; stars: number; breakthrough: boolean; affixes: WeaponAffix[] }
+export type WeaponProgressInput = Pick<WeaponProgress, 'level' | 'stars'> & Partial<Pick<WeaponProgress, 'breakthrough' | 'affixes'>>
 export type WeaponProgressMap = Record<string, WeaponProgress>
+
+const weaponAffixDefinitions: Record<WeaponAffixKey, { label: string; min: number; max: number; step: number }> = {
+  damage: { label: '火力增幅', min: 0.06, max: 0.18, step: 0.01 },
+  'fire-rate': { label: '循环加速', min: 0.05, max: 0.15, step: 0.01 },
+  'crit-rate': { label: '弱点校准', min: 0.03, max: 0.09, step: 0.01 },
+  magazine: { label: '扩容供弹', min: 0.08, max: 0.24, step: 0.02 },
+  reload: { label: '快速装填', min: 0.06, max: 0.18, step: 0.01 },
+  pierce: { label: '贯穿弹道', min: 1, max: 2, step: 1 },
+  'status-chance': { label: '元素共鸣', min: 0.05, max: 0.15, step: 0.01 }
+}
+const weaponAffixKeys = Object.keys(weaponAffixDefinitions) as WeaponAffixKey[]
 
 export const weaponCatalog: WeaponDefinition[] = [
   { key: 'pistol', name: '守望手枪', category: '手枪', rarity: '普通', level: 1, unlockLevel: 1, damage: 24, fireRate: 2.8, range: 600, bulletSpeed: 760, pierce: 0, spread: 0.04, projectiles: 1, element: '物理', statusChance: 0.12, attackPattern: 'single', magazineSize: 12, reloadTime: 1.1, critRate: 0.05, critDamage: 1.8, knockback: 20, explosionRadius: 0, chainCount: 0, chargeTime: 0, maxLevel: 120, maxStars: 5, slotCount: 4, fixedTrait: '首发校准：弹匣第一发暴击率翻倍', traits: ['稳定单发', '暴击入门', '低维护'] },
@@ -111,19 +127,43 @@ export function weaponRequiresCharge(weapon: WeaponDefinition) {
   return weapon.attackPattern === 'charged' && weapon.chargeTime > 0
 }
 
-export function emptyWeaponProgress(): WeaponProgressMap {
-  return Object.fromEntries(weaponCatalog.map((weapon) => [weapon.key, { level: 1, stars: 0 }]))
+export function rollWeaponAffixes(random: () => number = Math.random, count = 2): WeaponAffix[] {
+  const pool = [...weaponAffixKeys]
+  const result: WeaponAffix[] = []
+  while (result.length < Math.min(count, pool.length)) {
+    const index = Math.min(pool.length - 1, Math.floor(random() * pool.length))
+    const key = pool.splice(index, 1)[0]
+    const definition = weaponAffixDefinitions[key]
+    const steps = Math.round((definition.max - definition.min) / definition.step)
+    const value = definition.min + Math.floor(random() * (steps + 1)) * definition.step
+    result.push({ key, label: definition.label, value: Math.round(value * 100) / 100 })
+  }
+  return result
 }
 
-export function normalizeWeaponProgress(saved?: Partial<WeaponProgressMap>): WeaponProgressMap {
+function deterministicWeaponAffixes(index: number) {
+  let state = (index + 1) * 2654435761
+  return rollWeaponAffixes(() => ((state = Math.imul(state ^ (state >>> 15), 2246822519)) >>> 0) / 4294967296, 2)
+}
+
+export function emptyWeaponProgress(): WeaponProgressMap {
+  return Object.fromEntries(weaponCatalog.map((weapon, index) => [weapon.key, { level: 1, stars: 0, breakthrough: false, affixes: deterministicWeaponAffixes(index) }]))
+}
+
+export function normalizeWeaponProgress(saved?: Record<string, Partial<WeaponProgress>>): WeaponProgressMap {
   const result = emptyWeaponProgress()
   for (const weapon of weaponCatalog) {
     const value = saved?.[weapon.key]
     if (!value) continue
     result[weapon.key] = {
       level: Math.max(1, Math.min(weapon.maxLevel, Math.floor(Number(value.level) || 1))),
-      stars: Math.max(0, Math.min(weapon.maxStars, Math.floor(Number(value.stars) || 0)))
+      stars: Math.max(0, Math.min(weapon.maxStars, Math.floor(Number(value.stars) || 0))),
+      breakthrough: Boolean(value.breakthrough),
+      affixes: Array.isArray(value.affixes)
+        ? value.affixes.filter((affix): affix is WeaponAffix => Boolean(affix && affix.key in weaponAffixDefinitions && Number.isFinite(affix.value))).slice(0, value.breakthrough ? 3 : 2).map((affix) => ({ key: affix.key, label: weaponAffixDefinitions[affix.key].label, value: Math.max(weaponAffixDefinitions[affix.key].min, Math.min(weaponAffixDefinitions[affix.key].max, Number(affix.value))) }))
+        : result[weapon.key].affixes
     }
+    if (result[weapon.key].breakthrough && result[weapon.key].affixes.length < 3) result[weapon.key].affixes.push(...deterministicWeaponAffixes(weaponCatalog.indexOf(weapon) + 20).filter((affix) => !result[weapon.key].affixes.some((existing) => existing.key === affix.key)).slice(0, 3 - result[weapon.key].affixes.length))
   }
   return result
 }
@@ -136,10 +176,48 @@ export function weaponStarCost(progress: WeaponProgress) {
   return { alloy: 3 + progress.stars * 4, parts: 8 + progress.stars * 6 }
 }
 
-export function applyWeaponProgress(definition: WeaponDefinition, progress: WeaponProgress): WeaponDefinition {
+export const weaponBreakthroughCost = { energyCores: 2, precision: 12 } as const
+export const weaponReforgeCost = { reforgeChips: 2 } as const
+
+export function weaponCanBreakthrough(definition: WeaponDefinition, progress: WeaponProgress) {
+  return !progress.breakthrough && progress.level >= definition.maxLevel && progress.stars >= definition.maxStars
+}
+
+export function breakthroughWeapon(progress: WeaponProgress, random: () => number = Math.random): WeaponProgress {
+  if (progress.breakthrough) return progress
+  const currentKeys = new Set(progress.affixes.map((affix) => affix.key))
+  const extra = rollWeaponAffixes(random, weaponAffixKeys.length).find((affix) => !currentKeys.has(affix.key))
+  return { ...progress, breakthrough: true, affixes: extra ? [...progress.affixes, extra] : [...progress.affixes] }
+}
+
+export function reforgeWeapon(progress: WeaponProgress, random: () => number = Math.random): WeaponProgress {
+  return { ...progress, affixes: rollWeaponAffixes(random, progress.breakthrough ? 3 : 2) }
+}
+
+export function rollWeaponCrate(unlockedWeapons: readonly WeaponDefinition[], random: () => number = Math.random) {
+  const pool = unlockedWeapons.length ? unlockedWeapons : [starterWeapon]
+  return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))]
+}
+
+export function applyWeaponProgress(definition: WeaponDefinition, progress: WeaponProgressInput): WeaponDefinition {
   const levelScale = 1 + (progress.level - 1) * 0.035
   const starScale = 1 + progress.stars * 0.12
-  return { ...definition, level: progress.level, damage: Math.round(definition.damage * levelScale * starScale * 100) / 100, traits: [...definition.traits] }
+  const affixes = progress.affixes ?? []
+  const bonus = (key: WeaponAffixKey) => affixes.filter((affix) => affix.key === key).reduce((sum, affix) => sum + affix.value, 0)
+  const breakthroughDamage = progress.breakthrough ? 1.15 : 1
+  const breakthroughFireRate = progress.breakthrough ? 1.1 : 1
+  return {
+    ...definition,
+    level: progress.level,
+    damage: Math.round(definition.damage * levelScale * starScale * breakthroughDamage * (1 + bonus('damage')) * 100) / 100,
+    fireRate: definition.fireRate * breakthroughFireRate * (1 + bonus('fire-rate')),
+    critRate: definition.critRate + bonus('crit-rate'),
+    magazineSize: Math.max(1, Math.round(definition.magazineSize * (1 + bonus('magazine')))),
+    reloadTime: definition.reloadTime * (1 - bonus('reload')),
+    pierce: definition.pierce + Math.round(bonus('pierce')),
+    statusChance: definition.statusChance + bonus('status-chance'),
+    traits: [...definition.traits, ...affixes.map((affix) => `${affix.label} +${affix.key === 'pierce' ? affix.value : Math.round(affix.value * 100) + '%'}`), ...(progress.breakthrough ? ['突破：伤害 +15% / 射速 +10% / 第三词条'] : [])]
+  }
 }
 
 export const starterAttachments: Attachment[] = [

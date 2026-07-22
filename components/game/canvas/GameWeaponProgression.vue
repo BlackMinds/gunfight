@@ -10,14 +10,23 @@
       </button>
     </div>
     <div class="weapon-growth-actions">
-      <div><b>当前武器成长</b><span>Lv.{{ currentWeaponProgress.level }}/120 · {{ currentWeaponProgress.stars }}/5 星</span></div>
+      <div><b>当前武器成长</b><span>Lv.{{ currentWeaponProgress.level }}/120 · {{ currentWeaponProgress.stars }}/5 星 · {{ currentWeaponProgress.breakthrough ? '已突破' : '未突破' }}</span></div>
+      <div><b>随机词条</b><span>{{ currentWeaponProgress.affixes.map((affix) => `${affix.label} +${affix.key === 'pierce' ? affix.value : Math.round(affix.value * 100) + '%'}`).join(' · ') }}</span></div>
       <button type="button" :disabled="currentWeaponProgress.level >= 120 || resources.gold < currentWeaponUpgradeCost.gold || resources.parts < currentWeaponUpgradeCost.parts" @click="upgradeCurrentWeapon">强化 · {{ currentWeaponUpgradeCost.gold }} 金 / {{ currentWeaponUpgradeCost.parts }} 零件</button>
       <button type="button" :disabled="currentWeaponProgress.stars >= 5 || resources.alloy < currentWeaponStarCost.alloy || resources.parts < currentWeaponStarCost.parts" @click="starCurrentWeapon">升星 · {{ currentWeaponStarCost.alloy }} 合金 / {{ currentWeaponStarCost.parts }} 零件</button>
+      <button type="button" :disabled="currentWeaponProgress.breakthrough || currentWeaponProgress.level < 120 || currentWeaponProgress.stars < 5 || advancedResources.energyCores < weaponBreakthroughCost.energyCores || advancedResources.precision < weaponBreakthroughCost.precision" @click="breakthroughCurrentWeapon">突破 · 2 核心 / 12 精密件</button>
+      <button type="button" :disabled="advancedResources.reforgeChips < weaponReforgeCost.reforgeChips" @click="reforgeCurrentWeapon">重铸词条 · 2 芯片</button>
+      <button type="button" :disabled="resources.gold < 600" @click="openWeaponCrate">开启武器箱 · 600 金</button>
+    </div>
+    <div class="weapon-growth-actions">
+      <div><b>支援武器</b><span>每 2.5 秒自动攻击，造成该武器 35% 伤害</span></div>
+      <button type="button" :disabled="!selectedSupportWeaponKey" @click="equipSupportWeapon(null)">卸下支援</button>
+      <button v-for="item in supportWeaponOptions" :key="`support-${item.key}`" type="button" :disabled="item.supportEquipped" @click="equipSupportWeapon(item)">{{ item.supportEquipped ? '支援中' : '设为支援' }} · {{ item.name }}</button>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
-const { weaponOptions, equipWeapon, resources, currentWeaponProgress, currentWeaponUpgradeCost, currentWeaponStarCost, upgradeCurrentWeapon, starCurrentWeapon } = useGameCanvasContext()
+const { weaponOptions, equipWeapon, resources, advancedResources, currentWeaponProgress, currentWeaponUpgradeCost, currentWeaponStarCost, upgradeCurrentWeapon, starCurrentWeapon, supportWeaponOptions, selectedSupportWeaponKey, equipSupportWeapon, breakthroughCurrentWeapon, reforgeCurrentWeapon, openWeaponCrate, weaponBreakthroughCost, weaponReforgeCost } = useGameCanvasContext()
 </script>

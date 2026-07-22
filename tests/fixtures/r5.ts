@@ -57,7 +57,7 @@ export function createR5BalanceSave(stage: R5BalanceStage): GameSaveFixture {
   const profile = getR5BuildProfile(stage)
   const definition = weaponCatalog.find((item) => item.key === profile.weaponKey)
   if (!definition) throw new Error(`R5 固定构筑缺少武器：${profile.weaponKey}`)
-  const progress = { level: profile.weaponLevel, stars: profile.weaponStars }
+  const progress = { level: profile.weaponLevel, stars: profile.weaponStars, breakthrough: false, affixes: [] }
   applyWeaponProgress(definition, progress)
   const weaponProgress: Partial<WeaponProgressMap> = { [profile.weaponKey]: progress }
   const equipped = profile.attachmentNames.map((name, index) => cloneAttachment(name, profile.id, index))

@@ -8,10 +8,10 @@ vi.mock('../../composables/game/gameCanvasContext', () => ({
   useGameCanvasContext: () => currentContext
 }))
 
-function createContext(canAdvance: boolean) {
+function createContext(canAdvance: boolean, objectiveSummary?: string) {
   return {
     mode: ref('settlement'),
-    lastRun: ref({ title: '终局结算', body: '测试结算', victory: true }),
+    lastRun: ref({ title: '终局结算', body: '测试结算', objectiveSummary, victory: true }),
     formatPreciseClock: vi.fn(),
     formatEnemyKinds: vi.fn(),
     overflowSalvageNotice: ref(null),
@@ -36,6 +36,8 @@ function createContext(canAdvance: boolean) {
     returnToBase: vi.fn(),
     inventoryOverCapacity: ref(false),
     canAdvanceToNextStage: ref(canAdvance),
+    isIndependentOperation: ref(false),
+    operationDefinition: ref({ id: 'campaign', shortLabel: '主线' }),
     advanceAndStart: vi.fn(),
     startStage: vi.fn()
   }
@@ -82,5 +84,12 @@ describe('结算关卡推进', () => {
     expect(cap?.disabled).toBe(true)
     expect(cap?.textContent).toContain('已达第 10000 关上限')
     expect(root.querySelector('[data-testid="advance-next-stage"]')).toBeNull()
+  })
+
+  it('独立行动结算展示目标和首通奖励摘要', async () => {
+    currentContext = createContext(true, '战区突袭首通：赛季积分 +100、能量核心 +1')
+    const root = await mountSettlement()
+
+    expect(root.querySelector('[data-testid="operation-objective-summary"]')?.textContent).toContain('能量核心 +1')
   })
 })

@@ -3,6 +3,7 @@
       <p class="panel-kicker">{{ lastRun?.victory ? '关卡结算' : '撤离结算' }}</p>
       <h2>{{ lastRun?.title }}</h2>
       <p>{{ lastRun?.body }}</p>
+      <p v-if="lastRun?.objectiveSummary" class="operation-objective-summary" data-testid="operation-objective-summary" role="status">{{ lastRun.objectiveSummary }}</p>
       <div v-if="lastRun?.reward" class="reward-grid">
         <span>金币 +{{ lastRun.reward.gold }}</span>
         <span>经验 +{{ lastRun.reward.exp }}</span>

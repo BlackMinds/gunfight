@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { scaleEnemyStats } from '../../shared/game/formulas'
 import { getEnemyPreview, getStageTypeLabel } from '../../shared/game/presentation'
+import { bossDefinitionForStage } from '../../shared/game/bosses'
 import { r5BossHpMultiplierForStage } from '../../shared/game/r5'
 import { levelTuning } from '../../shared/game/waves'
 
@@ -9,11 +10,15 @@ describe('关卡展示数据', () => {
     const stage = 10
     const stats = scaleEnemyStats(stage, levelTuning.boss.kind)
     expect(getEnemyPreview(stage)).toMatchObject({
-      label: levelTuning.boss.label,
+      label: bossDefinitionForStage(stage).label,
       hp: Math.round(stats.hp * levelTuning.boss.multipliers.hp),
       damage: Math.round(stats.damage * levelTuning.boss.multipliers.damage),
       boss: true
     })
+  })
+
+  it('10/100/1000/10000 关预览使用对应 Boss 名称', () => {
+    expect([10, 100, 1000, 10000].map((stage) => getEnemyPreview(stage).label)).toEqual(['突击领主', '堡垒巨像', '战区统帅', '终焉核心'])
   })
 
   it('五阶段 Boss 预览包含阶段可读性生命倍率', () => {

@@ -175,5 +175,9 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
     }
   }
 
-  return { username, password, revision, conflict, state, hasSession, login, register, logout, push, pullAndMerge, queueSync, keepLocalVersion, useCloudVersion, initialize }
+  function apiRequest<R>(path: string, method: 'GET' | 'POST' | 'PUT' = 'GET', body?: unknown) {
+    return request<R>(path, method, body)
+  }
+
+  return { username, password, revision, conflict, state, hasSession, login, register, logout, push, pullAndMerge, queueSync, keepLocalVersion, useCloudVersion, initialize, apiRequest }
 }

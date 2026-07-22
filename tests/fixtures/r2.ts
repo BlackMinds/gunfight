@@ -120,7 +120,7 @@ export function createR2BalanceSave(stage: (typeof R2_BALANCE_STAGES)[number]): 
     inventory: [],
     acquireOrder: {},
     selectedWeaponKey: 'light-machine-gun',
-    weaponProgress: { 'light-machine-gun': { level: 1, stars: 0 } }
+    weaponProgress: { 'light-machine-gun': { level: 1, stars: 0, breakthrough: false, affixes: [] } }
   }
 }
 

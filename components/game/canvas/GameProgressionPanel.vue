@@ -8,6 +8,7 @@
     <GameTalentProgression />
     <div class="progression-grid"><GameSetProgression /><GameOfflineCloudPanel /></div>
     <GameTaskProgression />
+    <GameExpansionProgression />
   </section>
 </template>
 
@@ -17,4 +18,5 @@ import GameSetProgression from './GameSetProgression.vue'
 import GameTalentProgression from './GameTalentProgression.vue'
 import GameTaskProgression from './GameTaskProgression.vue'
 import GameWeaponProgression from './GameWeaponProgression.vue'
+import GameExpansionProgression from './GameExpansionProgression.vue'
 </script>

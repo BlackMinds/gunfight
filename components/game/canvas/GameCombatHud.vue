@@ -45,6 +45,14 @@
           <b>{{ Math.ceil(player.hp) }} / {{ player.maxHp }}</b>
         </div>
         <div class="stat-row">
+          <span>护甲 / 防御</span>
+          <b>{{ Math.ceil(player.armor) }} / {{ player.maxArmor }} · {{ player.defense }}</b>
+        </div>
+        <div class="stat-row">
+          <span>幸运</span>
+          <b>{{ player.luck }} / 60</b>
+        </div>
+        <div class="stat-row">
           <span>经验值</span>
           <b>{{ player.exp }} / {{ nextLevelExp }}</b>
         </div>
@@ -74,7 +82,7 @@
       </div>
       <small>{{ waveStatusText }}</small>
       <small v-if="nextEnemyPreview.stageBandLabel" class="combat-stage-intel" data-testid="combat-stage-intel">
-        {{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.warzoneLandmark }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · {{ operationDefinition.id === 'survival' ? '90 秒连续压力' : `Boss ${nextEnemyPreview.bossPhaseCount} 阶段` }}
+        {{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.factionLabel }}（{{ nextEnemyPreview.factionSummary }}）· {{ nextEnemyPreview.warzoneLandmark }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · {{ operationDefinition.id === 'survival' ? '90 秒连续压力' : `Boss ${nextEnemyPreview.bossPhaseCount} 阶段` }}
       </small>
     </section>
 

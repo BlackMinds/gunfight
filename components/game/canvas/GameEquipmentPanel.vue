@@ -46,7 +46,7 @@
       <div v-if="selectedEquippedAttachment" class="equipment-cultivation" data-testid="equipped-cultivation">
         <div>
           <small>已装备配件培养</small>
-          <b>{{ selectedEquippedAttachment.name }} · +{{ selectedEquippedAttachment.level ?? 0 }}</b>
+          <b>{{ selectedEquippedAttachment.name }} · +{{ selectedEquippedAttachment.level ?? 0 }} · ★{{ selectedEquippedAttachment.stars ?? 0 }}/3{{ selectedEquippedAttachment.breakthrough ? ' · 已突破' : '' }}</b>
           <span>{{ selectedEquippedAttachment.effect }}</span>
         </div>
         <div v-if="selectedEquippedAttachment.subAffixes?.length" class="equipment-affix-locks" aria-label="已装备配件副词条锁定">
@@ -64,6 +64,12 @@
         <div class="equipment-cultivation-actions">
           <button type="button" :disabled="!canUpgradeAttachment(selectedEquippedAttachment)" @click="upgradeInventoryAttachment(selectedEquippedAttachment)">强化 {{ attachmentUpgradeCost(selectedEquippedAttachment) }} 零件</button>
           <button type="button" :disabled="!canReforgeAttachment(selectedEquippedAttachment)" @click="reforgeInventoryAttachment(selectedEquippedAttachment)">重铸 {{ formatReforgeCost(selectedEquippedAttachment) }}</button>
+          <button type="button" :disabled="!canStarAttachment(selectedEquippedAttachment)" @click="starAttachment(selectedEquippedAttachment)">
+            升星 {{ selectedEquippedAttachment.stars ?? 0 }}/3 · {{ attachmentStarCost(selectedEquippedAttachment).gold }} 金 / {{ attachmentStarCost(selectedEquippedAttachment).precision }} 元件
+          </button>
+          <button type="button" :disabled="!canBreakthroughAttachment(selectedEquippedAttachment)" @click="breakthroughAttachment(selectedEquippedAttachment)">
+            {{ selectedEquippedAttachment.breakthrough ? '已突破' : `突破 · ${attachmentBreakthroughCost(selectedEquippedAttachment).precision} 元件 / ${attachmentBreakthroughCost(selectedEquippedAttachment).energyCores} 核心` }}
+          </button>
         </div>
       </div>
     </section>
@@ -81,6 +87,8 @@ const {
   selectedEquippedAttachment, selectEquippedAttachment, sameAttachment,
   isReforgeAffixLocked, toggleReforgeAffixLock, formatAffix,
   canUpgradeAttachment, upgradeInventoryAttachment, attachmentUpgradeCost,
-  canReforgeAttachment, reforgeInventoryAttachment, formatReforgeCost
+  canReforgeAttachment, reforgeInventoryAttachment, formatReforgeCost,
+  attachmentStarCost, canStarAttachment, starAttachment,
+  attachmentBreakthroughCost, canBreakthroughAttachment, breakthroughAttachment
 } = useGameCanvasContext()
 </script>

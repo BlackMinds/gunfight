@@ -1131,6 +1131,82 @@
   aspect-ratio: 1;
 }
 
+.game-screen .attachment-build-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.game-screen .attachment-build-tags span {
+  border: 1px solid rgba(229, 184, 75, 0.36);
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: #e8d9b4;
+  background: rgba(19, 23, 25, 0.82);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.game-screen .attachment-build-tags .tag-生存 { border-color: rgba(105, 185, 216, 0.58); color: #a9d9ec; }
+.game-screen .attachment-build-tags .tag-经济 { border-color: rgba(114, 201, 151, 0.58); color: #a8e0bd; }
+.game-screen .attachment-build-tags .tag-穿透 { border-color: rgba(181, 140, 255, 0.62); color: #cbb5ff; }
+
+.game-screen .item-recycle-preview {
+  display: block;
+  margin-top: 4px;
+  color: #d9c28d;
+  font-size: 11px;
+}
+
+.game-screen .item-recycle-preview.protected { color: #91a0aa; }
+
+.game-screen .expansion-progression {
+  margin-top: 18px;
+  border: 1px solid rgba(229, 184, 75, 0.28);
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(145deg, rgba(20, 25, 28, 0.96), rgba(11, 15, 17, 0.96));
+}
+
+.game-screen .expansion-progression > header,
+.game-screen .advanced-resource-row,
+.game-screen .skill-growth-card button,
+.game-screen .shop-card button,
+.game-screen .season-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.game-screen .advanced-resource-row { flex-wrap: wrap; justify-content: flex-end; }
+.game-screen .advanced-resource-row span { padding: 6px 9px; border-radius: 8px; background: rgba(255,255,255,.045); font-size: 12px; }
+.game-screen .expansion-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.game-screen .expansion-grid > article { border: 1px solid rgba(151, 167, 176, .18); border-radius: 12px; padding: 12px; background: rgba(5, 8, 10, .42); }
+.game-screen .expansion-grid h4 { margin: 0 0 10px; color: #f0cf77; }
+.game-screen .skill-growth-card button,
+.game-screen .shop-card button { width: 100%; margin-top: 7px; padding: 9px; text-align: left; }
+.game-screen .skill-growth-card button span,
+.game-screen .shop-card button span { display: grid; gap: 2px; }
+.game-screen .skill-growth-card small,
+.game-screen .shop-card small,
+.game-screen .season-card small { color: #91a0aa; }
+.game-screen .season-card div { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.055); }
+.game-screen .season-card > button { width: 100%; margin: 10px 0 6px; }
+.game-screen .season-card .leaderboard-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; border: 0; }
+.game-screen .season-card .leaderboard-tabs button { min-width: 0; padding: 6px; font-size: 11px; }
+.game-screen .season-card .leaderboard-tabs button.active { border-color: rgba(240, 191, 87, .72); color: #f0cf77; background: rgba(240, 191, 87, .1); }
+.game-screen .online-leaderboard { max-height: 210px; margin: 8px 0; padding: 0; overflow-y: auto; list-style: none; }
+.game-screen .online-leaderboard li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 7px; color: #b7c1c7; font-size: 12px; }
+.game-screen .online-leaderboard li.current { color: #f7da88; background: rgba(240, 191, 87, .1); }
+
+@media (max-width: 760px) {
+  .game-screen .expansion-progression > header { align-items: flex-start; flex-direction: column; }
+  .game-screen .advanced-resource-row { justify-content: flex-start; }
+  .game-screen .expansion-grid { grid-template-columns: 1fr; }
+}
+
 .game-screen .inventory-icon-shell::after {
   content: "";
   position: absolute;
@@ -3916,6 +3992,14 @@
   color: #d9efbd;
   border-color: rgba(116, 166, 105, 0.58);
   background: linear-gradient(90deg, transparent, rgba(14, 39, 24, 0.94) 18%, rgba(37, 74, 45, 0.96) 50%, rgba(14, 39, 24, 0.94) 82%, transparent);
+}
+
+.game-screen .operation-objective-summary {
+  margin: 0;
+  padding: 10px 12px;
+  color: #d9efbd;
+  border: 1px solid rgba(116, 166, 105, 0.44);
+  background: rgba(18, 45, 27, 0.7);
 }
 
 .game-screen .run-report {

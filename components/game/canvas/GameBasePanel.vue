@@ -40,6 +40,7 @@
               <span>下一关敌情</span>
               <b>{{ nextEnemyPreview.label }}</b>
               <small>生命 {{ nextEnemyPreview.hp }} · 伤害 {{ nextEnemyPreview.damage }} · {{ stageType }}</small>
+              <small v-if="nextEnemyPreview.bossSummary" class="r5-stage-intel">首领机制：{{ nextEnemyPreview.bossSummary }}</small>
               <small v-if="nextEnemyPreview.stageBandLabel" class="r5-stage-intel" data-testid="r5-stage-intel">
                 R5 战区：{{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · {{ operationDefinition.id === 'survival' ? '无 Boss · 90 秒连续压力' : `Boss ${nextEnemyPreview.bossPhaseCount} 阶段` }} · 建议 DPS {{ nextEnemyPreview.expectedDps }} / 生命 {{ nextEnemyPreview.expectedMaxHp }}
               </small>
@@ -60,7 +61,7 @@
               @click="selectOperation(operation.id)"
             >
               <b>{{ operation.label }}</b>
-              <span>{{ operation.unlocked ? operation.summary : '完成第 500 关后开放' }}</span>
+              <span>{{ operation.unlocked ? operation.summary : operation.unlockText }}</span>
             </button>
           </div>
           <div class="stage-picker" aria-label="关卡选择">
@@ -148,6 +149,13 @@
               </option>
             </select>
           </label>
+          <label>
+            <span>流派</span>
+            <select v-model="selectedBuildTag" data-testid="build-tag-filter">
+              <option value="全部">全部</option>
+              <option v-for="tag in attachmentBuildTags" :key="tag" :value="tag">{{ tag }}</option>
+            </select>
+          </label>
         </div>
         <div v-if="inventory.length" class="slot-filter-block">
           <div class="filter-caption">
@@ -197,11 +205,18 @@
               @click="handleInventoryItemClick(item)"
             >
               <span class="inventory-item-art" :style="equipmentIconStyle(item, Math.max(0, attachmentSlots.indexOf(item.slot)))" aria-hidden="true" />
-              <span class="inventory-item-level">+{{ item.level ?? 0 }}</span>
+              <span class="inventory-item-level">+{{ item.level ?? 0 }} · ★{{ item.stars ?? 0 }}</span>
               <span class="inventory-item-slot">{{ item.slot }}</span>
               <span v-if="item.favorite" class="inventory-favorite-mark" aria-hidden="true">★</span>
               <span v-if="isSaleMode" class="inventory-sale-check" :class="{ protected: item.favorite }" aria-hidden="true">{{ item.favorite ? '锁' : isSaleSelected(item) ? '✓' : '' }}</span>
             </button>
+            <div class="attachment-build-tags" :aria-label="`流派：${buildAttachmentTags(item).join('、')}`">
+              <span v-for="tag in buildAttachmentTags(item)" :key="tag" :class="`tag-${tag}`">{{ tag }}</span>
+            </div>
+            <small v-if="isSaleMode && !item.favorite" class="item-recycle-preview" data-testid="item-recycle-preview">
+              回收：{{ recycleAttachmentValue(item).gold }} 金 / {{ recycleAttachmentValue(item).parts }} 零件
+            </small>
+            <small v-else-if="isSaleMode" class="item-recycle-preview protected">收藏保护</small>
             <div v-if="!isSaleMode" class="inventory-item-tooltip" role="tooltip">
               <div class="inventory-tooltip-head">
                 <div>
@@ -282,7 +297,8 @@ const {
   attachmentSwapLabel, inventoryNearCapacity, inventoryCapacityLabel, favoriteAttachmentCount,
   filteredInventory, inventory, toggleSaleMode, selectedInventorySort, inventorySortOptions,
   inventoryFilterOptions, selectedInventoryFilter, selectedRarity, attachmentRarityFilters,
-  inventoryByRarity, selectedSlot, attachmentSlotFilters, inventoryBySlot, saleItems,
+  inventoryByRarity, selectedBuildTag, attachmentBuildTags, buildAttachmentTags, recycleAttachmentValue,
+  selectedSlot, attachmentSlotFilters, inventoryBySlot, saleItems,
   saleReward, sellableFilteredInventory, toggleFilteredSaleSelection, allFilteredSelected,
   clearSaleSelection, sellSelectedAttachments, attachmentKey, isSaleSelected,
   selectedAttachment, sameAttachment, canSwapAttachment, handleInventoryItemClick,

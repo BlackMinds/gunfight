@@ -18,7 +18,7 @@ describe('R5 八节点固定构筑夹具', () => {
       expect(save.player.level).toBe(profile.playerLevel)
       expect(save.equipped).toHaveLength(8)
       expect(new Set(save.equipped.map((item) => item.slot)).size).toBe(8)
-      expect(save.weaponProgress?.[profile.weaponKey]).toEqual({ level: profile.weaponLevel, stars: profile.weaponStars })
+      expect(save.weaponProgress?.[profile.weaponKey]).toEqual({ level: profile.weaponLevel, stars: profile.weaponStars, breakthrough: false, affixes: [] })
     }
   })
 })

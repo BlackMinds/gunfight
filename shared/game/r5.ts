@@ -5,7 +5,17 @@ import type { BossPhaseDefinition, WavePhase } from './waves'
 export const R5_STAGE_MIN = 501
 export const R5_IMPLEMENTED_STAGE_CAP = 10000
 
-export type R5EliteAffixId = EliteAffixId | 'suppression' | 'linked-armor' | 'hunter' | 'overload'
+export type R5EliteAffixId = EliteAffixId
+  | 'suppression'
+  | 'linked-armor'
+  | 'hunter'
+  | 'overload'
+  | 'toxic'
+  | 'summoner'
+  | 'reflective'
+  | 'chilling'
+  | 'barrier'
+  | 'resistant'
 
 export type R5EnemyMechanics = {
   suppressiveMark: boolean
@@ -74,7 +84,13 @@ export const r5Tuning = {
     suppression: { id: 'suppression', label: '抑制', unlockStage: 501, color: '#b58cff' },
     'linked-armor': { id: 'linked-armor', label: '链甲', unlockStage: 1001, color: '#69aee8' },
     hunter: { id: 'hunter', label: '猎手', unlockStage: 2001, color: '#ef8b5a' },
-    overload: { id: 'overload', label: '过载', unlockStage: 5001, color: '#f05d72' }
+    overload: { id: 'overload', label: '过载', unlockStage: 5001, color: '#f05d72' },
+    toxic: { id: 'toxic', label: '毒性', unlockStage: 501, color: '#78c95b' },
+    summoner: { id: 'summoner', label: '召唤', unlockStage: 1001, color: '#c394ef' },
+    reflective: { id: 'reflective', label: '反伤', unlockStage: 2001, color: '#f07b68' },
+    chilling: { id: 'chilling', label: '冰冷', unlockStage: 3001, color: '#73cfe8' },
+    barrier: { id: 'barrier', label: '屏障', unlockStage: 5001, color: '#f2c968' },
+    resistant: { id: 'resistant', label: '抗性', unlockStage: 7501, color: '#b5c1d6' }
   },
   suppressionCooldownPenalty: 0.4,
   linkedDamageShare: 0.18,
@@ -82,6 +98,16 @@ export const r5Tuning = {
   hunterActionRate: 1.12,
   overloadHpThreshold: 0.35,
   overloadActionRate: 1.18,
+  toxicDuration: 4,
+  toxicDamageRatio: 0.12,
+  summonCooldown: 8,
+  reflectRatio: 0.08,
+  reflectMaxHpCap: 0.03,
+  chillingDuration: 2.5,
+  chillingSpeedMultiplier: 0.7,
+  barrierCooldown: 6,
+  barrierArmorRatio: 0.12,
+  resistantStatusDurationMultiplier: 0.55,
   trackingRatio: 0.5,
   commandActionRate: 1.08,
   fivePhaseBossHpMultiplier: 8
@@ -172,44 +198,54 @@ export function r5MechanicLabels(stage: number) {
   return labels
 }
 
-const allAffixIds: readonly R5EliteAffixId[] = ['assault', 'bulwark', 'regeneration', 'volatile', 'suppression', 'linked-armor', 'hunter', 'overload']
+const allAffixIds: readonly R5EliteAffixId[] = [
+  'assault', 'bulwark', 'regeneration', 'volatile',
+  'suppression', 'linked-armor', 'hunter', 'overload',
+  'toxic', 'summoner', 'reflective', 'chilling', 'barrier', 'resistant'
+]
 
 export function availableR5EliteAffixes(stage: number): R5EliteAffixId[] {
   if (stage < R5_STAGE_MIN) return []
   return allAffixIds.filter((id) => {
-    if (id === 'suppression' || id === 'linked-armor' || id === 'hunter' || id === 'overload') return r5Tuning.affixes[id].unlockStage <= clampedStage(stage)
+    if (id in r5Tuning.affixes) return r5Tuning.affixes[id as keyof typeof r5Tuning.affixes].unlockStage <= clampedStage(stage)
     return true
   })
 }
+
+const extraAffixDefinitions = r5Tuning.affixes as Record<string, { id: string; label: string; unlockStage: number; color: string }>
 
 export function resolveR5EliteAffixes(stage: number, waveIndex: number, spawnIndex: number, kind?: EnemyKind): R5EliteAffixId[] {
   if (stage < R5_STAGE_MIN) return resolveEliteAffixes(stage, waveIndex, spawnIndex, kind)
   const band = getR5StageBand(stage)
   const pool = availableR5EliteAffixes(stage)
   if (!band || !pool.length) return []
-  const kindOffset = kind ? ['grunt', 'ranged', 'fast', 'heavy', 'bomber', 'sniper', 'medic', 'warden'].indexOf(kind) : 0
+  const kindOffset = kind ? ['grunt', 'ranged', 'fast', 'heavy', 'bomber', 'sniper', 'medic', 'warden', 'shield', 'commander', 'splitter', 'stealth'].indexOf(kind) : 0
   const start = Math.abs(stage * 19 + waveIndex * 11 + spawnIndex * 5 + Math.max(0, kindOffset)) % pool.length
   return Array.from({ length: Math.min(band.eliteAffixCount, pool.length) }, (_, index) => pool[(start + index) % pool.length])
 }
 
 export function r5EliteAffixLabels(affixes: readonly R5EliteAffixId[]) {
   return affixes.map((id) => {
-    if (id === 'suppression' || id === 'linked-armor' || id === 'hunter' || id === 'overload') return r5Tuning.affixes[id].label
-    return eliteAffixLabels([id])[0]
+    if (id in extraAffixDefinitions) return extraAffixDefinitions[id].label
+    return eliteAffixLabels([id as EliteAffixId])[0]
   })
 }
 
 export function r5EliteAffixColor(id: R5EliteAffixId) {
-  if (id === 'suppression' || id === 'linked-armor' || id === 'hunter' || id === 'overload') return r5Tuning.affixes[id].color
+  if (id in extraAffixDefinitions) return extraAffixDefinitions[id].color
   const colors: Record<EliteAffixId, string> = { assault: '#f0a34a', bulwark: '#78b9d6', regeneration: '#86bf70', volatile: '#e36b4f' }
-  return colors[id]
+  return colors[id as EliteAffixId]
 }
 
 export function r5EliteAffixCombatModifiers(affixes: readonly R5EliteAffixId[], hpRatio = 1) {
   const legacy = eliteAffixCombatModifiers(affixes.filter((id): id is EliteAffixId => ['assault', 'bulwark', 'regeneration', 'volatile'].includes(id)))
   const hunterRate = affixes.includes('hunter') ? r5Tuning.hunterActionRate : 1
   const overloadRate = affixes.includes('overload') && hpRatio <= r5Tuning.overloadHpThreshold ? r5Tuning.overloadActionRate : 1
-  return { ...legacy, actionRateMultiplier: legacy.actionRateMultiplier * hunterRate * overloadRate }
+  return {
+    ...legacy,
+    actionRateMultiplier: legacy.actionRateMultiplier * hunterRate * overloadRate,
+    statusDurationMultiplier: affixes.includes('resistant') ? r5Tuning.resistantStatusDurationMultiplier : 1
+  }
 }
 
 export function bossPhasesForStage(stage: number, basePhases: readonly BossPhaseDefinition[]) {
@@ -221,11 +257,17 @@ export function r5WaveKindsForStage(stage: number, phase: WavePhase, baseKinds: 
   if (stage < R5_STAGE_MIN) return [...baseKinds]
   const specialists = r5SpecialistKindsForStage(stage)
   const additions: Partial<Record<WavePhase, EnemyKind[]>> = {
-    warmup: stage >= 1501 ? ['grunt', 'medic'] : ['grunt'],
-    'ranged-pressure': ['ranged', 'sniper', stage >= 1001 ? 'heavy' : 'grunt'],
-    'charge-burst': ['fast', 'bomber', ...(stage >= 1501 ? ['medic' as EnemyKind] : [])],
-    'armor-check': ['heavy', stage >= 3001 ? 'warden' : stage >= 2001 ? 'bomber' : 'ranged'],
-    climax: stage >= 3001 ? ['ranged', 'sniper', 'heavy', 'warden', 'bomber', 'fast', ...specialists] : ['heavy', 'ranged', ...specialists]
+    warmup: stage >= 2001 ? ['grunt', 'medic', 'commander'] : stage >= 1501 ? ['grunt', 'medic'] : ['grunt'],
+    'ranged-pressure': ['ranged', 'sniper', stage >= 1001 ? 'shield' : 'grunt'],
+    'charge-burst': ['fast', 'bomber', ...(stage >= 5001 ? ['splitter' as EnemyKind] : stage >= 1501 ? ['medic' as EnemyKind] : [])],
+    'armor-check': ['heavy', stage >= 3001 ? 'warden' : stage >= 2001 ? 'bomber' : stage >= 1001 ? 'shield' : 'ranged'],
+    climax: stage >= 7501
+      ? ['ranged', 'sniper', 'shield', 'commander', 'splitter', 'stealth', ...specialists]
+      : stage >= 5001
+        ? ['ranged', 'sniper', 'heavy', 'warden', 'splitter', ...specialists]
+        : stage >= 3001
+          ? ['ranged', 'sniper', 'heavy', 'warden', 'bomber', 'fast', ...specialists]
+          : ['heavy', 'ranged', ...specialists]
   }
   return [...baseKinds, ...(additions[phase] ?? [])]
 }
