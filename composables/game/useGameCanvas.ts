@@ -2956,7 +2956,7 @@ function draw() {
       ctx.stroke()
       if (enemy.aimTime > 0) {
         const aimProgress = 1 - enemy.aimTime / (enemy.kind === 'sniper' ? 1.15 : levelTuning.enemyWarnings.rangedAimSeconds)
-        ctx.strokeStyle = aimProgress > 0.72 ? '#ff6b4a' : '#f2c14f'
+        ctx.strokeStyle = enemy.kind === 'sniper' ? '#ff5f67' : aimProgress > 0.72 ? '#ff6b4a' : '#f2c14f'
         ctx.lineWidth = 1.5 + aimProgress * 2
         ctx.globalAlpha = 0.48 + aimProgress * 0.42
         ctx.setLineDash([10, 6])
