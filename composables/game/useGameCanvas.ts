@@ -1747,6 +1747,15 @@ function shieldLinkPartner(enemy: Enemy) {
     && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= r5Tuning.linkedRange)
 }
 
+function medicRepairTargets(enemy: Enemy) {
+  return enemies
+    .filter((candidate) => candidate.id !== enemy.id
+      && candidate.hp > 0
+      && candidate.hp < candidate.maxHp
+      && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= 170)
+    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)
+}
+
 function wardenProtector(enemy: Enemy) {
   if (enemy.kind === 'warden') return null
   return enemies.find((candidate) => candidate.kind === 'warden'
@@ -2555,8 +2564,8 @@ function update(delta: number) {
         enemy.aimTime = 1.15
       }
     } else if (enemy.kind === 'medic') {
-      const injuredAllies = enemies.filter((candidate) => candidate.id !== enemy.id && candidate.hp > 0 && candidate.hp < candidate.maxHp && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= 170)
-      const focus = injuredAllies.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0]
+      const injuredAllies = medicRepairTargets(enemy)
+      const focus = injuredAllies[0]
       if (focus) {
         const focusDistance = Math.hypot(focus.x - enemy.x, focus.y - enemy.y)
         moveAngle = Math.atan2(focus.y - enemy.y, focus.x - enemy.x)
@@ -2576,7 +2585,7 @@ function update(delta: number) {
         }
         if (healed > 0) {
           hitTexts.push({ x: enemy.x, y: enemy.y - enemy.radius - 18, value: `编队修复 +${Math.round(healed)}`, life: 0.75, maxLife: 0.75, color: '#7bd49a' })
-          enemy.attackTimer = 4.2
+          enemy.attackTimer = 4
         } else {
           enemy.attackTimer = 0.6
         }
@@ -2895,6 +2904,18 @@ function draw() {
     ctx.beginPath()
     ctx.moveTo(enemy.x, enemy.y)
     ctx.lineTo(linked.x, linked.y)
+    ctx.stroke()
+  }
+  ctx.strokeStyle = 'rgba(114, 201, 151, 0.88)'
+  ctx.lineWidth = compactViewport ? 3.5 : 2.5
+  ctx.setLineDash([5, 4])
+  for (const enemy of enemies) {
+    if (enemy.kind !== 'medic') continue
+    const repairTarget = medicRepairTargets(enemy)[0]
+    if (!repairTarget) continue
+    ctx.beginPath()
+    ctx.moveTo(enemy.x, enemy.y)
+    ctx.lineTo(repairTarget.x, repairTarget.y)
     ctx.stroke()
   }
   ctx.strokeStyle = 'rgba(104, 190, 225, 0.78)'
