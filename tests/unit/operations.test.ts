@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createOperationWavePlan, getOperationDefinition, operationAdvancesCampaign, operationUnlocked } from '../../shared/game/operations'
+import { createOperationWavePlan, getOperationDefinition, operationAdvancesCampaign, operationUnlocked, operationVictoryVerdict } from '../../shared/game/operations'
 
 describe('独立挑战与生存行动', () => {
   it('完成第 500 关后开放独立行动', () => {
@@ -28,5 +28,11 @@ describe('独立挑战与生存行动', () => {
     expect(waves.every((wave) => !wave.boss)).toBe(true)
     expect(waves[9].kinds).toEqual(['sniper', 'medic', 'warden', 'heavy'])
     expect(waves[9].count).toBeGreaterThan(waves[0].count)
+  })
+
+  it('独立行动使用自身目标判定而不复用主线时长结论', () => {
+    expect(operationVictoryVerdict('campaign', '达标 · 目标区间 45～90 秒')).toBe('达标 · 目标区间 45～90 秒')
+    expect(operationVictoryVerdict('challenge', '偏快 · 比目标少 15 秒')).toBe('达成 · 终波首领已击破')
+    expect(operationVictoryVerdict('survival', '偏慢 · 超出目标 1 秒')).toBe('达成 · 已存活 90 秒')
   })
 })

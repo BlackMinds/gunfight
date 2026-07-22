@@ -11,7 +11,7 @@
       </div>
       <div v-if="lastRun?.stats" class="run-report" aria-label="本关战斗数据">
         <article><span>{{ lastRun.victory ? '通关时间' : '撤离时间' }}</span><b>{{ formatPreciseClock(lastRun.stats.duration) }}</b></article>
-        <article><span>时长目标</span><b>{{ lastRun.stats.durationVerdict }}</b></article>
+        <article><span>{{ operationDefinition.id === 'campaign' ? '时长目标' : '行动判定' }}</span><b>{{ lastRun.stats.durationVerdict }}</b></article>
         <article><span>击杀数量</span><b>{{ lastRun.stats.kills }}</b></article>
         <article><span>受伤次数</span><b>{{ lastRun.stats.hitCount }} 次</b></article>
         <article><span>吸血恢复</span><b>{{ Math.round(lastRun.stats.lifestealHealing) }}</b></article>

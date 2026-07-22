@@ -37,7 +37,7 @@ import { getStageMeta, rewardForStage, scaleEnemyStats, type EnemyKind } from '~
 import { canAdvanceStage, maxSelectableStageFor, nextStageAfterVictory, restoreProgression } from '~/shared/game/progression'
 import { BASE_INVENTORY_CAPACITY, canAffordAttachmentReforge, getAttachmentRecycleValue, getAttachmentReforgeCost, resolveAttachmentOverflow, type AttachmentReforgeCost } from '~/shared/game/inventory'
 import { enemyKindLabels, getEnemyPreview, getStageTypeLabel } from '~/shared/game/presentation'
-import { createOperationWavePlan, getOperationDefinition, operationAdvancesCampaign, operationDefinitions, operationUnlocked, type OperationMode } from '~/shared/game/operations'
+import { createOperationWavePlan, getOperationDefinition, operationAdvancesCampaign, operationDefinitions, operationUnlocked, operationVictoryVerdict, type OperationMode } from '~/shared/game/operations'
 import { eliteAffixCombatModifiers, eliteAffixLabels, r4EnemyMechanicsForStage, r4Tuning, resolveEliteAffixes, type EliteAffixId } from '~/shared/game/r4'
 import { getR5WarzoneTheme, r5BossHpMultiplierForStage, r5CampaignGrowthForHighestCleared, r5EliteAffixColor, r5EliteAffixCombatModifiers, r5EliteAffixLabels, r5EnemyMechanicsForStage, r5ShieldLinkPairEligible, r5Tuning, resolveR5EliteAffixes, type R5EliteAffixId, type R5WarzoneTheme } from '~/shared/game/r5'
 import { CURRENT_SAVE_VERSION, emptyLegacyBase, migrateAttachmentIdentity } from '~/shared/game/save'
@@ -1884,7 +1884,7 @@ function snapshotRunStats(victory: boolean): RunStatsSnapshot {
     waves,
     deathCombination: runStats.deathCombination,
     dpsGapPercent: dpsGapPercent(runStats.peakDps, averageDps),
-    durationVerdict: victory ? durationVerdict(duration) : '未完成 · 不计时长目标',
+    durationVerdict: victory ? operationVictoryVerdict(activeOperationMode.value, durationVerdict(duration)) : '未完成 · 不计行动目标',
     contribution: {
       heavyPierceDamage: runStats.heavyPierceDamage,
       criticalTriggers: runStats.criticalTriggers,

@@ -32,6 +32,12 @@ export function operationAdvancesCampaign(mode: OperationMode) {
   return mode === 'campaign'
 }
 
+export function operationVictoryVerdict(mode: OperationMode, campaignVerdict: string) {
+  if (mode === 'challenge') return '达成 · 终波首领已击破'
+  if (mode === 'survival') return '达成 · 已存活 90 秒'
+  return campaignVerdict
+}
+
 function reindex(waves: WaveDefinition[]): WaveDefinition[] {
   return waves.map((wave, index) => ({ ...wave, index: index + 1, kinds: [...wave.kinds] }))
 }
