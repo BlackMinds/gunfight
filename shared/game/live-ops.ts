@@ -1,18 +1,17 @@
+import { createOperationWavePlan, type OperationMode } from './operations'
+import { countWaveEnemies } from './waves'
+
 export const leaderboardMetrics = ['highest-stage', 'bounty-time', 'survival-kills', 'event-score'] as const
 export type LeaderboardMetric = (typeof leaderboardMetrics)[number]
 
-export type SeasonSubmission = {
-  highestStage: number
-  bestBountyMs: number | null
-  survivalKills: number
-  eventScore: number
-}
+export const rankedOperationModes = ['campaign', 'challenge', 'survival', 'bounty', 'event'] as const satisfies readonly OperationMode[]
+export type RankedOperationMode = (typeof rankedOperationModes)[number]
 
 const activityRotation = [
   { id: 'bounty-surge', label: '悬赏增援周', operation: 'bounty', bonus: '荣誉币 +25%' },
   { id: 'survival-front', label: '生存前线周', operation: 'survival', bonus: '赛季积分 +25%' },
   { id: 'warzone-assault', label: '战区突袭周', operation: 'event', bonus: '精密元件 +1' },
-  { id: 'boss-hunt', label: '首领猎杀周', operation: 'challenge', bonus: 'Boss 材料 +1' }
+  { id: 'boss-hunt', label: '首领猎杀周', operation: 'challenge', bonus: '精密元件 +1' }
 ] as const
 
 const DAY_MS = 86_400_000
@@ -36,27 +35,31 @@ export function liveOpsSnapshot(now = new Date()) {
   }
 }
 
+export function normalizeRankedOperationMode(value: unknown): RankedOperationMode {
+  if (!rankedOperationModes.includes(value as RankedOperationMode)) throw new Error('invalid ranked operation mode')
+  return value as RankedOperationMode
+}
+
+export function rankedRunRulesFor(stage: number, mode: RankedOperationMode) {
+  const safeStage = Math.max(1, Math.min(10000, Math.round(Number(stage) || 1)))
+  const maxKills = countWaveEnemies(createOperationWavePlan(safeStage, mode))
+  const minimumDurationMs = mode === 'survival' ? 85_000 : mode === 'event' ? 12_000 : mode === 'campaign' ? 6_000 : 5_000
+  return { stage: safeStage, mode, maxKills, minimumDurationMs, maximumDurationMs: 30 * 60_000 }
+}
+
+export function activityBonusFor(activityId: string | null | undefined, mode: RankedOperationMode) {
+  return {
+    honorMultiplier: activityId === 'bounty-surge' && mode === 'bounty' ? 1.25 : 1,
+    seasonScoreMultiplier: activityId === 'survival-front' && mode === 'survival' ? 1.25 : 1,
+    precisionBonus: ((activityId === 'warzone-assault' && mode === 'event') || (activityId === 'boss-hunt' && mode === 'challenge')) ? 1 : 0
+  }
+}
+
+export function rankedEventScoreFor(mode: RankedOperationMode, activityId: string, previousEventClears = 0) {
+  const base = mode === 'bounty' ? 35 : mode === 'survival' ? 25 : mode === 'event' && previousEventClears === 0 ? 100 : 0
+  return Math.round(base * activityBonusFor(activityId, mode).seasonScoreMultiplier)
+}
+
 export function normalizeLeaderboardMetric(value: unknown): LeaderboardMetric {
   return leaderboardMetrics.includes(value as LeaderboardMetric) ? value as LeaderboardMetric : 'event-score'
-}
-
-export function extractSeasonSubmission(payload: Record<string, unknown>): SeasonSubmission {
-  const season = payload.season && typeof payload.season === 'object' ? payload.season as Record<string, unknown> : {}
-  const highestStage = Math.max(0, Math.min(10000, Math.floor(Number(payload.highestCleared) || 0)))
-  const bountySeconds = season.bestBountySeconds == null ? null : Number(season.bestBountySeconds)
-  return {
-    highestStage,
-    bestBountyMs: bountySeconds != null && Number.isFinite(bountySeconds) && bountySeconds > 0 ? Math.round(bountySeconds * 1000) : null,
-    survivalKills: Math.max(0, Math.floor(Number(season.bestSurvivalKills) || 0)),
-    eventScore: Math.max(0, Math.floor(Number(season.score) || 0))
-  }
-}
-
-export function mergeSeasonSubmission(current: SeasonSubmission | null, incoming: SeasonSubmission): SeasonSubmission {
-  return {
-    highestStage: Math.max(current?.highestStage ?? 0, incoming.highestStage),
-    bestBountyMs: current?.bestBountyMs == null ? incoming.bestBountyMs : incoming.bestBountyMs == null ? current.bestBountyMs : Math.min(current.bestBountyMs, incoming.bestBountyMs),
-    survivalKills: Math.max(current?.survivalKills ?? 0, incoming.survivalKills),
-    eventScore: Math.max(current?.eventScore ?? 0, incoming.eventScore)
-  }
 }

@@ -11,7 +11,7 @@ describe('R2 固定构筑夹具', () => {
         for (const [key, value] of Object.entries(item.bonuses ?? {}) as Array<[AttachmentBonusKey, number]>) total[key] += value
         return total
       },
-      { damage: 0, fireRate: 0, maxHp: 0, pickup: 0, speed: 0, pierce: 0, expGain: 0, critRate: 0 }
+      { damage: 0, fireRate: 0, maxHp: 0, pickup: 0, speed: 0, pierce: 0, expGain: 0, critRate: 0, critDamage: 0, magazine: 0, reload: 0, range: 0, knockback: 0, statusChance: 0, defense: 0, armor: 0, luck: 0 }
     )
 
     expect(Math.round(16 * (1 + bonuses.damage))).toBe(18)

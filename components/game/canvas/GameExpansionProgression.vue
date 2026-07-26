@@ -36,7 +36,7 @@
         <div><span>悬赏最快</span><b>{{ seasonState.bestBountySeconds == null ? '暂无' : `${seasonState.bestBountySeconds.toFixed(1)} 秒` }}</b></div>
         <div><span>生存最高击杀</span><b>{{ seasonState.bestSurvivalKills }}</b></div>
         <div><span>活动完成</span><b>{{ seasonState.eventClears }}</b></div>
-        <button type="button" :disabled="onlineSeasonStatus.loading" @click="syncOnlineSeason">{{ onlineSeasonStatus.loading ? '同步中…' : '校验云存档并同步赛季' }}</button>
+        <button type="button" :disabled="onlineSeasonStatus.loading" @click="syncOnlineSeason">{{ onlineSeasonStatus.loading ? '读取中…' : '读取已验证赛季成绩' }}</button>
         <small>{{ onlineSeasonStatus.error || onlineSeasonStatus.label }}</small>
         <div class="leaderboard-tabs">
           <button v-for="metric in leaderboardMetrics" :key="metric" type="button" :class="{ active: metric === leaderboardMetric }" @click="refreshLeaderboard(metric)">{{ metricLabels[metric] }}</button>

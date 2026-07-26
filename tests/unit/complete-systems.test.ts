@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { bossAbilityPlanForStage } from '../../shared/game/bosses'
 import { enemyFactionFor, factionDamageMultiplier, factionFormationBonus, factionStatusDurationMultiplier } from '../../shared/game/factions'
-import { extractSeasonSubmission, liveOpsSnapshot, mergeSeasonSubmission, normalizeLeaderboardMetric } from '../../shared/game/live-ops'
+import { activityBonusFor, liveOpsSnapshot, normalizeLeaderboardMetric, rankedEventScoreFor, rankedRunRulesFor } from '../../shared/game/live-ops'
 import { absorbWithArmor, defenseDamageMultiplier, luckDropMultiplier, luckRarityShift } from '../../shared/game/player-stats'
 import { availableR5EliteAffixes, r5EliteAffixCombatModifiers } from '../../shared/game/r5'
 import { applyWeaponProgress, breakthroughWeapon, reforgeWeapon, rollWeaponAffixes, rollWeaponCrate, starterWeapon, weaponCanBreakthrough, weaponCatalog } from '../../shared/game/weapons'
@@ -65,10 +65,13 @@ describe('完整系统深化', () => {
     expect(snapshot.activity.endsAt).toBe('2026-07-29T00:00:00.000Z')
   })
 
-  it('联网成绩仅从存档提取并按最佳成绩单调合并', () => {
-    const first = extractSeasonSubmission({ highestCleared: 500, season: { bestBountySeconds: 42.5, bestSurvivalKills: 80, score: 1000 } })
-    const next = extractSeasonSubmission({ highestCleared: 800, season: { bestBountySeconds: 45, bestSurvivalKills: 70, score: 1200 } })
-    expect(mergeSeasonSubmission(first, next)).toEqual({ highestStage: 800, bestBountyMs: 42500, survivalKills: 80, eventScore: 1200 })
+  it('排位规则由服务端模式和关卡生成，活动加成只作用于匹配玩法', () => {
+    const rules = rankedRunRulesFor(800, 'survival')
+    expect(rules).toMatchObject({ stage: 800, mode: 'survival', minimumDurationMs: 85_000 })
+    expect(rules.maxKills).toBeGreaterThan(0)
+    expect(activityBonusFor('survival-front', 'survival').seasonScoreMultiplier).toBe(1.25)
+    expect(activityBonusFor('survival-front', 'bounty').seasonScoreMultiplier).toBe(1)
+    expect(rankedEventScoreFor('survival', 'survival-front')).toBe(31)
     expect(normalizeLeaderboardMetric('unsafe-column')).toBe('event-score')
   })
 })

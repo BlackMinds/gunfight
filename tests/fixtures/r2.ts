@@ -26,7 +26,16 @@ const affixLabels: Record<AttachmentBonusKey, string> = {
   speed: '移速',
   pierce: '穿透',
   expGain: '经验',
-  critRate: '暴击率'
+  critRate: '暴击率',
+  critDamage: '暴击伤害',
+  magazine: '弹匣容量',
+  reload: '换弹速度',
+  range: '射程',
+  knockback: '击退',
+  statusChance: '异常概率',
+  defense: '防御',
+  armor: '护甲',
+  luck: '幸运'
 }
 
 function affix(key: AttachmentBonusKey, value: number, tier: AttachmentAffix['tier']): AttachmentAffix {
@@ -34,7 +43,7 @@ function affix(key: AttachmentBonusKey, value: number, tier: AttachmentAffix['ti
 }
 
 function bonusEffect(key: AttachmentBonusKey, value: number) {
-  if (key === 'maxHp' || key === 'pickup' || key === 'pierce') return `${affixLabels[key]} +${value}`
+  if (key === 'maxHp' || key === 'pickup' || key === 'pierce' || key === 'defense' || key === 'armor' || key === 'luck') return `${affixLabels[key]} +${value}`
   return `${affixLabels[key]} +${Math.round(value * 100)}%`
 }
 

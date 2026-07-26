@@ -3,7 +3,7 @@ export const attachmentRarities = ['普通', '精良', '稀有', '史诗', '传�
 
 export type AttachmentSlot = (typeof attachmentSlots)[number]
 export type AttachmentRarity = (typeof attachmentRarities)[number]
-export type AttachmentBonusKey = 'damage' | 'fireRate' | 'maxHp' | 'pickup' | 'speed' | 'pierce' | 'expGain' | 'critRate'
+export type AttachmentBonusKey = 'damage' | 'fireRate' | 'maxHp' | 'pickup' | 'speed' | 'pierce' | 'expGain' | 'critRate' | 'critDamage' | 'magazine' | 'reload' | 'range' | 'knockback' | 'statusChance' | 'defense' | 'armor' | 'luck'
 export type AttachmentAffixTier = '主词条' | '副词条'
 export type AttachmentSpecialEffectKey =
   | 'status-spread'
@@ -19,6 +19,23 @@ export type AttachmentSpecialEffectKey =
   | 'black-hole'
   | 'threat-targeting'
   | 'elite-overdrive'
+  | 'split-shot'
+  | 'ricochet'
+  | 'periodic-shield'
+  | 'crit-explosion'
+  | 'chain-hit'
+  | 'support-drone'
+  | 'high-health-overload'
+  | 'time-field'
+  | 'armor-break'
+  | 'guaranteed-crit'
+  | 'ammo-return'
+  | 'reload-overdrive'
+  | 'boss-hunter'
+  | 'elite-hunter'
+  | 'vulnerability-crit'
+  | 'elemental-boost'
+  | 'evolution'
 export type AttachmentAffix = {
   key: AttachmentBonusKey
   label: string
@@ -84,16 +101,17 @@ export type WeaponDefinition = {
   traits: string[]
 }
 
-export type WeaponAffixKey = 'damage' | 'fire-rate' | 'crit-rate' | 'magazine' | 'reload' | 'pierce' | 'status-chance'
+export type WeaponAffixKey = 'damage' | 'fire-rate' | 'crit-rate' | 'crit-damage' | 'magazine' | 'reload' | 'pierce' | 'status-chance'
 export type WeaponAffix = { key: WeaponAffixKey; label: string; value: number }
-export type WeaponProgress = { level: number; stars: number; breakthrough: boolean; affixes: WeaponAffix[] }
-export type WeaponProgressInput = Pick<WeaponProgress, 'level' | 'stars'> & Partial<Pick<WeaponProgress, 'breakthrough' | 'affixes'>>
+export type WeaponProgress = { level: number; stars: number; breakthrough: boolean; cores?: number; affixes: WeaponAffix[] }
+export type WeaponProgressInput = Pick<WeaponProgress, 'level' | 'stars'> & Partial<Pick<WeaponProgress, 'breakthrough' | 'cores' | 'affixes'>>
 export type WeaponProgressMap = Record<string, WeaponProgress>
 
 const weaponAffixDefinitions: Record<WeaponAffixKey, { label: string; min: number; max: number; step: number }> = {
   damage: { label: '火力增幅', min: 0.06, max: 0.18, step: 0.01 },
   'fire-rate': { label: '循环加速', min: 0.05, max: 0.15, step: 0.01 },
   'crit-rate': { label: '弱点校准', min: 0.03, max: 0.09, step: 0.01 },
+  'crit-damage': { label: '暴伤放大', min: 0.08, max: 0.24, step: 0.02 },
   magazine: { label: '扩容供弹', min: 0.08, max: 0.24, step: 0.02 },
   reload: { label: '快速装填', min: 0.06, max: 0.18, step: 0.01 },
   pierce: { label: '贯穿弹道', min: 1, max: 2, step: 1 },
@@ -147,7 +165,7 @@ function deterministicWeaponAffixes(index: number) {
 }
 
 export function emptyWeaponProgress(): WeaponProgressMap {
-  return Object.fromEntries(weaponCatalog.map((weapon, index) => [weapon.key, { level: 1, stars: 0, breakthrough: false, affixes: deterministicWeaponAffixes(index) }]))
+  return Object.fromEntries(weaponCatalog.map((weapon, index) => [weapon.key, { level: 1, stars: 0, breakthrough: false, cores: 0, affixes: deterministicWeaponAffixes(index) }]))
 }
 
 export function normalizeWeaponProgress(saved?: Record<string, Partial<WeaponProgress>>): WeaponProgressMap {
@@ -159,6 +177,7 @@ export function normalizeWeaponProgress(saved?: Record<string, Partial<WeaponPro
       level: Math.max(1, Math.min(weapon.maxLevel, Math.floor(Number(value.level) || 1))),
       stars: Math.max(0, Math.min(weapon.maxStars, Math.floor(Number(value.stars) || 0))),
       breakthrough: Boolean(value.breakthrough),
+      cores: Math.max(0, Math.floor(Number(value.cores) || 0)),
       affixes: Array.isArray(value.affixes)
         ? value.affixes.filter((affix): affix is WeaponAffix => Boolean(affix && affix.key in weaponAffixDefinitions && Number.isFinite(affix.value))).slice(0, value.breakthrough ? 3 : 2).map((affix) => ({ key: affix.key, label: weaponAffixDefinitions[affix.key].label, value: Math.max(weaponAffixDefinitions[affix.key].min, Math.min(weaponAffixDefinitions[affix.key].max, Number(affix.value))) }))
         : result[weapon.key].affixes
@@ -212,6 +231,7 @@ export function applyWeaponProgress(definition: WeaponDefinition, progress: Weap
     damage: Math.round(definition.damage * levelScale * starScale * breakthroughDamage * (1 + bonus('damage')) * 100) / 100,
     fireRate: definition.fireRate * breakthroughFireRate * (1 + bonus('fire-rate')),
     critRate: definition.critRate + bonus('crit-rate'),
+    critDamage: definition.critDamage + bonus('crit-damage'),
     magazineSize: Math.max(1, Math.round(definition.magazineSize * (1 + bonus('magazine')))),
     reloadTime: definition.reloadTime * (1 - bonus('reload')),
     pierce: definition.pierce + Math.round(bonus('pierce')),
@@ -264,6 +284,77 @@ const setAttachments: Attachment[] = [
   { name: '黑域枪管', slot: '枪管', rarity: '神话', effect: '伤害 +34% / 穿透 +2', bonuses: { damage: 0.34, pierce: 2 }, setKey: '黑域终端', specialEffectKey: 'elite-overdrive', specialEffect: '击败精英后 6 秒伤害、射速、暴击和移速提高 25%' }
 ]
 
+const catalogAttachments: Attachment[] = [
+  { name: '简易补偿器', slot: '枪口', rarity: '普通', effect: '稳定性提升 / 击退 +5%', bonuses: { knockback: 0.05 } },
+  { name: '制退器', slot: '枪口', rarity: '精良', effect: '击退 +8% / 伤害 +4%', bonuses: { knockback: 0.08, damage: 0.04 } },
+  { name: '消音枪口', slot: '枪口', rarity: '精良', effect: '暴击率 +4%', bonuses: { critRate: 0.04 } },
+  { name: '扩散喷口', slot: '枪口', rarity: '稀有', effect: '额外弹丸 / 弹幕覆盖提高', bonuses: { fireRate: 0.06 }, specialEffectKey: 'split-shot', specialEffect: '每次射击额外发射 1 枚弹丸' },
+  { name: '冲击制退器', slot: '枪口', rarity: '史诗', effect: '击退 +20% / 异常概率 +5%', bonuses: { knockback: 0.2, statusChance: 0.05 } },
+  { name: '裂甲枪口', slot: '枪口', rarity: '史诗', effect: '伤害 +12% / 命中附加破甲', bonuses: { damage: 0.12 }, specialEffectKey: 'armor-break', specialEffect: '命中使目标进入 2 秒破甲状态' },
+  { name: '归零枪口', slot: '枪口', rarity: '神话', effect: '射速 +18% / 周期必定暴击', bonuses: { fireRate: 0.18 }, specialEffectKey: 'guaranteed-crit', specialEffect: '连续射击时每第 10 发必定暴击' },
+
+  { name: '标准弹匣', slot: '弹匣', rarity: '普通', effect: '弹匣容量 +10%', bonuses: { magazine: 0.1 } },
+  { name: '扩容弹匣', slot: '弹匣', rarity: '精良', effect: '弹匣容量 +35%', bonuses: { magazine: 0.35 } },
+  { name: '轻量弹匣', slot: '弹匣', rarity: '稀有', effect: '射速 +8%', bonuses: { fireRate: 0.08 } },
+  { name: '双排弹匣', slot: '弹匣', rarity: '稀有', effect: '弹匣容量 +50%', bonuses: { magazine: 0.5 } },
+  { name: '战术弹匣', slot: '弹匣', rarity: '史诗', effect: '换弹速度 +20% / 换弹后火力加速', bonuses: { reload: 0.2 }, specialEffectKey: 'reload-overdrive', specialEffect: '换弹时间额外缩短 20%' },
+  { name: '回流弹匣', slot: '弹匣', rarity: '史诗', effect: '击杀返还 1 发子弹', bonuses: { magazine: 0.12 }, specialEffectKey: 'ammo-return', specialEffect: '击败敌人时返还 1 发子弹' },
+  { name: '超载弹匣', slot: '弹匣', rarity: '传说', effect: '弹匣前段火力提高', bonuses: { damage: 0.16, magazine: 0.2 } },
+  { name: '无尽弹鼓', slot: '弹匣', rarity: '传说', effect: '弹匣容量 +100%', bonuses: { magazine: 1 } },
+
+  { name: '机械瞄具', slot: '瞄具', rarity: '普通', effect: '射程 +5%', bonuses: { range: 0.05 } },
+  { name: '全息瞄具', slot: '瞄具', rarity: '精良', effect: '移动射击优化 / 移速 +5%', bonuses: { speed: 0.05 } },
+  { name: '二倍镜', slot: '瞄具', rarity: '稀有', effect: '射程 +12% / 暴击率 +3%', bonuses: { range: 0.12, critRate: 0.03 } },
+  { name: '战术扫描镜', slot: '瞄具', rarity: '稀有', effect: '精英伤害 +8%', bonuses: { damage: 0.06 }, specialEffectKey: 'elite-hunter', specialEffect: '对精英和首领额外增伤 12%' },
+  { name: '狙击镜', slot: '瞄具', rarity: '史诗', effect: '射程 +25% / 暴击伤害 +30%', bonuses: { range: 0.25, critDamage: 0.3 } },
+  { name: '热成像瞄具', slot: '瞄具', rarity: '史诗', effect: '高速与隐形目标伤害 +15%', bonuses: { damage: 0.15 } },
+  { name: '多目标锁定镜', slot: '瞄具', rarity: '传说', effect: '连锁 +1', bonuses: { statusChance: 0.08 }, specialEffectKey: 'chain-hit', specialEffect: '命中后额外连锁 1 个附近目标' },
+  { name: '预判核心镜', slot: '瞄具', rarity: '神话', effect: '射程 +25% / 伤害 +20%', bonuses: { range: 0.25, damage: 0.2 }, specialEffectKey: 'threat-targeting', specialEffect: '自动优先索敌高威胁目标' },
+
+  { name: '短枪管', slot: '枪管', rarity: '普通', effect: '射速 +5%', bonuses: { fireRate: 0.05 } },
+  { name: '标准枪管', slot: '枪管', rarity: '普通', effect: '伤害 +5%', bonuses: { damage: 0.05 } },
+  { name: '长枪管', slot: '枪管', rarity: '精良', effect: '射程 +15%', bonuses: { range: 0.15 } },
+  { name: '加重枪管', slot: '枪管', rarity: '精良', effect: '伤害 +10%', bonuses: { damage: 0.1 } },
+  { name: '螺旋膛线枪管', slot: '枪管', rarity: '稀有', effect: '暴击伤害 +18%', bonuses: { critDamage: 0.18 } },
+  { name: '高压枪管', slot: '枪管', rarity: '史诗', effect: '伤害 +18%', bonuses: { damage: 0.18 } },
+  { name: '分裂枪管', slot: '枪管', rarity: '史诗', effect: '额外弹丸', bonuses: { damage: 0.08 }, specialEffectKey: 'split-shot', specialEffect: '每次射击额外发射 1 枚弹丸' },
+  { name: '星陨枪管', slot: '枪管', rarity: '神话', effect: '伤害 +30% / 穿透 +2 / 暴击爆炸', bonuses: { damage: 0.3, pierce: 2 }, specialEffectKey: 'crit-explosion', specialEffect: '暴击触发 72 范围爆炸' },
+
+  { name: '木质枪托', slot: '枪托', rarity: '普通', effect: '防御 +5', bonuses: { defense: 5 } },
+  { name: '轻型枪托', slot: '枪托', rarity: '精良', effect: '移动速度 +4%', bonuses: { speed: 0.04 } },
+  { name: '折叠枪托', slot: '枪托', rarity: '稀有', effect: '移动速度 +7% / 伤害 +6%', bonuses: { speed: 0.07, damage: 0.06 } },
+  { name: '战术枪托', slot: '枪托', rarity: '稀有', effect: '移动速度 +5% / 射速 +6%', bonuses: { speed: 0.05, fireRate: 0.06 } },
+  { name: '缓冲枪托', slot: '枪托', rarity: '史诗', effect: '防御 +14 / 护甲 +24', bonuses: { defense: 14, armor: 24 } },
+  { name: '反冲枪托', slot: '枪托', rarity: '史诗', effect: '击退 +18% / 移速 +8%', bonuses: { knockback: 0.18, speed: 0.08 } },
+  { name: '游击枪托', slot: '枪托', rarity: '传说', effect: '移速 +15% / 周期必定暴击', bonuses: { speed: 0.15 }, specialEffectKey: 'guaranteed-crit', specialEffect: '连续作战时每第 10 发必定暴击' },
+
+  { name: '普通弹芯', slot: '弹芯', rarity: '普通', effect: '伤害 +5%', bonuses: { damage: 0.05 } },
+  { name: '穿甲弹芯', slot: '弹芯', rarity: '精良', effect: '穿透 +1 / 伤害 +8%', bonuses: { pierce: 1, damage: 0.08 }, specialEffectKey: 'armor-break', specialEffect: '命中使目标进入 2 秒破甲状态' },
+  { name: '空尖弹芯', slot: '弹芯', rarity: '精良', effect: '伤害 +18%', bonuses: { damage: 0.18 } },
+  { name: '毒蚀弹芯', slot: '弹芯', rarity: '稀有', effect: '异常概率 +12%', bonuses: { statusChance: 0.12 } },
+  { name: '冰霜弹芯', slot: '弹芯', rarity: '稀有', effect: '异常概率 +12% / 射程 +8%', bonuses: { statusChance: 0.12, range: 0.08 } },
+  { name: '爆裂弹芯', slot: '弹芯', rarity: '史诗', effect: '伤害 +16% / 暴击爆炸', bonuses: { damage: 0.16 }, specialEffectKey: 'crit-explosion', specialEffect: '暴击触发 72 范围爆炸' },
+
+  { name: '分裂模块', slot: '模块', rarity: '稀有', effect: '额外弹丸', bonuses: { fireRate: 0.05 }, specialEffectKey: 'split-shot', specialEffect: '每次射击额外发射 1 枚弹丸' },
+  { name: '反弹模块', slot: '模块', rarity: '稀有', effect: '子弹边界反弹 1 次', bonuses: { range: 0.1 }, specialEffectKey: 'ricochet', specialEffect: '子弹碰到战区边界时可反弹 1 次' },
+  { name: '护盾模块', slot: '模块', rarity: '史诗', effect: '护甲 +30 / 周期护盾', bonuses: { armor: 30 }, specialEffectKey: 'periodic-shield', specialEffect: '每 8 秒获得 15% 最大生命护盾' },
+  { name: '爆破模块', slot: '模块', rarity: '史诗', effect: '暴击伤害 +18% / 暴击爆炸', bonuses: { critDamage: 0.18 }, specialEffectKey: 'crit-explosion', specialEffect: '暴击触发 72 范围爆炸' },
+  { name: '连锁模块', slot: '模块', rarity: '史诗', effect: '异常概率 +10% / 连锁 +1', bonuses: { statusChance: 0.1 }, specialEffectKey: 'chain-hit', specialEffect: '命中后额外连锁 1 个附近目标' },
+  { name: '无人机模块', slot: '模块', rarity: '传说', effect: '召唤自动攻击无人机', bonuses: { damage: 0.12 }, specialEffectKey: 'support-drone', specialEffect: '每 2.2 秒由无人机造成 40% 主武器伤害' },
+  { name: '过载模块', slot: '模块', rarity: '传说', effect: '高生命时射速 +18%', bonuses: { maxHp: 24 }, specialEffectKey: 'high-health-overload', specialEffect: '生命不低于 80% 时射速提高 18%' },
+  { name: '时滞模块', slot: '模块', rarity: '传说', effect: '防御 +18 / 周期减速', bonuses: { defense: 18 }, specialEffectKey: 'time-field', specialEffect: '每 8 秒使 300 范围内敌人减速 3 秒' },
+
+  { name: '悬赏芯片', slot: '芯片', rarity: '精良', effect: '拾取 +18 / 经验 +8%', bonuses: { pickup: 18, expGain: 0.08 } },
+  { name: '幸运芯片', slot: '芯片', rarity: '精良', effect: '幸运 +5', bonuses: { luck: 5 } },
+  { name: '后勤芯片', slot: '芯片', rarity: '稀有', effect: '经验 +10% / 幸运 +4', bonuses: { expGain: 0.1, luck: 4 } },
+  { name: '猎首芯片', slot: '芯片', rarity: '稀有', effect: 'Boss 伤害 +10%', bonuses: { damage: 0.04 }, specialEffectKey: 'boss-hunter', specialEffect: '对首领额外增伤 10%' },
+  { name: '精英猎手芯片', slot: '芯片', rarity: '稀有', effect: '精英伤害 +12%', bonuses: { damage: 0.05 }, specialEffectKey: 'elite-hunter', specialEffect: '对精英和首领额外增伤 12%' },
+  { name: '弱点芯片', slot: '芯片', rarity: '史诗', effect: '暴击伤害 +16% / 暴击附加易伤', bonuses: { critDamage: 0.16 }, specialEffectKey: 'vulnerability-crit', specialEffect: '暴击使目标易伤 2.5 秒' },
+  { name: '弹道芯片', slot: '芯片', rarity: '史诗', effect: '射程 +18% / 射速 +8%', bonuses: { range: 0.18, fireRate: 0.08 } },
+  { name: '元素增幅芯片', slot: '芯片', rarity: '史诗', effect: '异常伤害 +20% / 异常概率 +8%', bonuses: { statusChance: 0.08 }, specialEffectKey: 'elemental-boost', specialEffect: '元素异常强度提高 20%' },
+  { name: '进化芯片', slot: '芯片', rarity: '神话', effect: '每通关 100 关提高装备伤害效率', bonuses: { luck: 8, expGain: 0.18 }, specialEffectKey: 'evolution', specialEffect: '每完成 100 关提高 0.2% 伤害，最多 10%' }
+]
+
 export const attachmentPool: Attachment[] = [
   ...starterAttachments,
   ...inventoryPreview,
@@ -272,5 +363,6 @@ export const attachmentPool: Attachment[] = [
   { name: '高压弹头', slot: '弹芯', rarity: '史诗', effect: '伤害 +16%', bonuses: { damage: 0.16 } },
   { name: '贯通线圈', slot: '枪管', rarity: '史诗', effect: '穿透 +2', bonuses: { pierce: 2 } },
   { name: '战术记录仪', slot: '芯片', rarity: '稀有', effect: '经验 +12%', bonuses: { expGain: 0.12 } },
-  ...setAttachments
+  ...setAttachments,
+  ...catalogAttachments
 ]

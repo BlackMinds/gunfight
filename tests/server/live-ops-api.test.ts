@@ -1,19 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const h3Mocks = vi.hoisted(() => ({ getQuery: vi.fn() }))
+const h3Mocks = vi.hoisted(() => ({ getQuery: vi.fn(), readBody: vi.fn() }))
 const databaseMocks = vi.hoisted(() => ({ ensureCloudSchema: vi.fn(), query: vi.fn() }))
 
 vi.mock('h3', async (importOriginal) => {
   const actual = await importOriginal<typeof import('h3')>()
-  return { ...actual, getQuery: h3Mocks.getQuery }
+  return { ...actual, getQuery: h3Mocks.getQuery, readBody: h3Mocks.readBody }
 })
 vi.mock('../../server/utils/auth', () => ({ requireCloudUser: () => ({ sub: 'user-1', username: 'player_1' }) }))
-vi.mock('../../server/utils/database', () => ({ ensureCloudSchema: databaseMocks.ensureCloudSchema, database: () => ({ query: databaseMocks.query }) }))
+vi.mock('../../server/utils/database', () => ({
+  createUserId: () => 'run-issued-1',
+  ensureCloudSchema: databaseMocks.ensureCloudSchema,
+  database: () => ({ query: databaseMocks.query })
+}))
 vi.mock('../../server/utils/validation', () => ({ isValidCloudSavePayload: () => true }))
 
 import liveOpsHandler from '../../server/api/live-ops.get'
 import leaderboardHandler from '../../server/api/leaderboard.get'
 import submitSeasonHandler from '../../server/api/season/submit.post'
+import startRankedRunHandler from '../../server/api/ranked-run/start.post'
+import completeRankedRunHandler from '../../server/api/ranked-run/complete.post'
+import { rankedRunRulesFor } from '../../shared/game/live-ops'
 
 const event = {} as never
 
@@ -22,6 +29,7 @@ describe('联网赛季 API', () => {
     databaseMocks.ensureCloudSchema.mockReset().mockResolvedValue(undefined)
     databaseMocks.query.mockReset()
     h3Mocks.getQuery.mockReset()
+    h3Mocks.readBody.mockReset()
   })
 
   it('活动日历由服务端时间生成并携带赛季边界', async () => {
@@ -31,15 +39,48 @@ describe('联网赛季 API', () => {
     expect(result.activity.startsAt).toMatch(/Z$/)
   })
 
-  it('赛季提交从云存档提取成绩并执行单调最佳值 upsert', async () => {
-    databaseMocks.query
-      .mockResolvedValueOnce({ rows: [{ payload: { saveVersion: 9, highestCleared: 1234, season: { bestBountySeconds: 31.2, bestSurvivalKills: 99, score: 7654 } } }] })
-      .mockResolvedValueOnce({ rows: [{ highest_stage: 1234, best_bounty_ms: 31200, survival_kills: 99, event_score: 7654, updated_at: new Date('2026-07-23T00:00:00Z') }] })
+  it('赛季同步只读取服务端已经验证的成绩，不再接受云存档注入分数', async () => {
+    databaseMocks.query.mockResolvedValueOnce({ rows: [{ highest_stage: 1234, best_bounty_ms: 31200, survival_kills: 99, event_score: 7654, updated_at: new Date('2026-07-23T00:00:00Z') }] })
 
     const result = await submitSeasonHandler(event)
 
-    expect(databaseMocks.query).toHaveBeenNthCalledWith(2, expect.stringContaining('GREATEST(gunfight_season_scores.highest_stage'), ['user-1', expect.stringMatching(/^S\d{2}-联合作战$/), 1234, 31200, 99, 7654])
+    expect(databaseMocks.query).toHaveBeenCalledOnce()
+    expect(databaseMocks.query).toHaveBeenCalledWith(expect.stringContaining('FROM gunfight_season_scores'), ['user-1', expect.stringMatching(/^S\d{2}-联合作战$/)])
+    expect(String(databaseMocks.query.mock.calls[0][0])).not.toContain('gunfight_cloud_saves')
     expect(result.score).toEqual({ highestStage: 1234, bestBountyMs: 31200, survivalKills: 99, eventScore: 7654 })
+  })
+
+  it('排位行动由服务端签发并绑定当前赛季、活动、模式与理论击杀上限', async () => {
+    h3Mocks.readBody.mockResolvedValue({ mode: 'campaign', stage: 11 })
+    databaseMocks.query
+      .mockResolvedValueOnce({ rows: [{ highest_stage: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    const result = await startRankedRunHandler(event)
+
+    expect(result).toMatchObject({ runId: 'run-issued-1', mode: 'campaign', stage: 11, minimumDurationMs: 6000 })
+    expect(result.maxKills).toBeGreaterThan(0)
+    expect(databaseMocks.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO gunfight_ranked_runs'), [
+      'user-1', result.runId, result.seasonId, result.activityId, 'campaign', 11
+    ])
+  })
+
+  it('排位结算原子消费一次性行动并写入服务端赛季成绩', async () => {
+    const kills = rankedRunRulesFor(11, 'campaign').maxKills
+    h3Mocks.readBody.mockResolvedValue({ runId: 'run-1', kills })
+    const now = Date.now()
+    databaseMocks.query
+      .mockResolvedValueOnce({ rows: [{
+        id: 'run-1', season_id: 'S01-联合作战', activity_id: 'bounty-surge', mode: 'campaign', stage: 11,
+        started_at: new Date(now - 10_000), expires_at: new Date(now + 100_000)
+      }] })
+      .mockResolvedValueOnce({ rows: [{ highest_stage: 11, best_bounty_ms: null, survival_kills: 0, event_score: 0, duration_ms: 10_000 }] })
+
+    const result = await completeRankedRunHandler(event)
+
+    expect(databaseMocks.query).toHaveBeenNthCalledWith(2, expect.stringContaining("status = 'completed'"), ['run-1', 'user-1', kills, 0])
+    expect(result.score.highestStage).toBe(11)
+    expect(result.durationMs).toBe(10_000)
   })
 
   it('排行榜只使用白名单指标并同时返回 Top 50 与本人名次', async () => {

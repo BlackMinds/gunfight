@@ -34,6 +34,7 @@ import skillPulseUrl from '~/assets/images/generated/skill-pulse.webp'
 import {
   attachmentBuildTags,
   attachmentMaxLevel,
+  attachmentPowerScore,
   attachmentRarityRank,
   attachmentUpgradeCost,
   buildAttachmentComparison,
@@ -60,7 +61,7 @@ import { canAdvanceStage, maxSelectableStageFor, nextStageAfterVictory, restoreP
 import { BASE_INVENTORY_CAPACITY, canAffordAttachmentReforge, getAttachmentRecycleValue, getAttachmentReforgeCost, resolveAttachmentOverflow, type AttachmentReforgeCost } from '~/shared/game/inventory'
 import { enemyKindLabels, getEnemyPreview, getStageTypeLabel } from '~/shared/game/presentation'
 import { absorbWithArmor, defenseDamageMultiplier, luckDropMultiplier, luckRarityShift } from '~/shared/game/player-stats'
-import { leaderboardMetrics, type LeaderboardMetric } from '~/shared/game/live-ops'
+import { activityBonusFor, leaderboardMetrics, liveOpsSnapshot, type LeaderboardMetric, type RankedOperationMode } from '~/shared/game/live-ops'
 import { bountyObjectiveCompleted, bountyObjectiveForStage, createOperationWavePlan, getOperationDefinition, operationAdvancesCampaign, operationDefinitions, operationUnlockText, operationUnlocked, operationVictoryVerdict, type OperationMode } from '~/shared/game/operations'
 import { eliteAffixCombatModifiers, eliteAffixLabels, r4EnemyMechanicsForStage, r4Tuning, resolveEliteAffixes, type EliteAffixId } from '~/shared/game/r4'
 import { getR5WarzoneTheme, r5BossHpMultiplierForStage, r5CampaignGrowthForHighestCleared, r5EliteAffixColor, r5EliteAffixCombatModifiers, r5EliteAffixLabels, r5EnemyMechanicsForStage, r5ShieldLinkPairEligible, r5Tuning, resolveR5EliteAffixes, type R5EliteAffixId, type R5WarzoneTheme } from '~/shared/game/r5'
@@ -151,7 +152,7 @@ type Enemy = Vec & {
   laserSweepStep: number
   enraged: boolean
 }
-type Bullet = Vec & { vx: number; vy: number; damage: number; life: number; pierce: number; critical: boolean; element: WeaponElement; statusChance: number; explosionRadius: number; chainCount: number; knockback: number; hitEnemyIds: Set<number> }
+type Bullet = Vec & { vx: number; vy: number; damage: number; life: number; pierce: number; critical: boolean; element: WeaponElement; statusChance: number; explosionRadius: number; chainCount: number; knockback: number; ricochets: number; hitEnemyIds: Set<number> }
 type EnemyProjectile = Vec & { vx: number; vy: number; damage: number; life: number; radius: number; sourceKind: EnemyKind | 'boss'; sourceAffixes: R5EliteAffixId[] }
 type EnemyHazard = Vec & { radius: number; warningSeconds: number; totalWarningSeconds: number; damage: number; sourceKind: EnemyKind; tracking: boolean }
 type Drop = Vec & { value: number; radius: number; kind: 'gold' | 'exp' }
@@ -183,7 +184,7 @@ type RunStatsSnapshot = {
 }
 type SkillKey = 'dash' | 'overload' | 'pulse'
 type EquippedBonusTotals = Record<AttachmentBonusKey, number>
-type InventorySortMode = '最近获得' | '品质优先' | '槽位整理'
+type InventorySortMode = '最近获得' | '品质优先' | '槽位整理' | '战力优先' | '可强化优先'
 type InventoryFilterMode = '全部' | '收藏' | '推荐' | '可替换' | '低品质'
 type AttachmentSlotFilter = AttachmentSlot | '全部'
 type AttachmentRarityFilter = AttachmentRarity | '全部'
@@ -341,14 +342,18 @@ const player = reactive({
   exp: 0
 })
 const modifiers = reactive({
-  damage: 1, fireRate: 1, speed: 1, pickup: 70, pierceBonus: 0, expGain: 1, critRate: 0,
+  damage: 1, fireRate: 1, speed: 1, pickup: 70, pierceBonus: 0, expGain: 1, critRate: 0, critDamage: 0,
+  magazine: 0, reload: 0, range: 0, knockback: 0,
   statusPower: 1, statusChance: 0, statusDuration: 1, goldGain: 1, offlineGain: 1,
   offlineCapHours: 8, dropRate: 0, damageReduction: 0, healthRegen: 0, lifesteal: 0,
   dodge: 0, cooldownReduction: 0, eliteDamage: 0, extraChains: 0, noPierceFalloff: false,
   burnExplosion: false, lowHealthLifesteal: false, doubleRewardChance: 0, eliteKillBuff: false,
   fireDamage: 0, shockChance: 0, voidAmmo: false, phaseDodge: false, fortress: false, statusSpread: false,
   stormImpact: false, quantumMagazine: false, goldConversion: false, lastStand: false,
-  blackHole: false, threatTargeting: false, eliteOverdrive: false
+  blackHole: false, threatTargeting: false, eliteOverdrive: false,
+  splitShot: false, ricochet: false, periodicShield: false, critExplosion: false, chainHit: false,
+  supportDrone: false, highHealthOverload: false, timeField: false, armorBreak: false, guaranteedCrit: false,
+  ammoReturn: false, reloadOverdrive: false, bossDamage: 0, vulnerabilityCrit: false, evolution: false
 })
 const skills = reactive([
   { key: 'dash' as SkillKey, shortcut: '1', name: '战术冲刺', hint: '瞬间拉开', cooldown: 0, icon: skillDashUrl },
@@ -416,7 +421,7 @@ const attachmentByName = new Map(attachmentPool.map((item) => [item.name, item])
 let attachmentInstanceCursor = 0
 const equippedParts = reactive<Attachment[]>([])
 const inventory = ref<Attachment[]>([])
-const inventorySortOptions: InventorySortMode[] = ['最近获得', '品质优先', '槽位整理']
+const inventorySortOptions: InventorySortMode[] = ['最近获得', '品质优先', '战力优先', '可强化优先', '槽位整理']
 const inventoryFilterOptions: InventoryFilterMode[] = ['全部', '收藏', '推荐', '可替换', '低品质']
 const attachmentSlotFilters = ['全部', ...attachmentSlots] as const
 const attachmentRarityFilters = ['全部', ...attachmentRarities] as const
@@ -450,12 +455,16 @@ let phaseDodgeCooldown = 0
 let lastStandBuffTimer = 0
 let lastStandCooldown = 0
 let blackHoleTimer = 8
+let moduleShieldTimer = 8
+let timeFieldTimer = 8
+let droneTimer = 2.2
 let playerPoisonSeconds = 0
 let playerPoisonDps = 0
 let playerChillSeconds = 0
 let supportWeaponTimer = 0
 let stationarySeconds = 0
 let fortressShield = 0
+let periodicShield = 0
 let shotsFiredThisRun = 0
 let stormHitCounter = 0
 let quantumShotActive = false
@@ -743,7 +752,7 @@ function equipWeapon(next: WeaponDefinition) {
   if (selectedSupportWeaponKey.value === next.key) selectedSupportWeaponKey.value = null
   const progressed = applyWeaponProgress(next, weaponProgress[next.key])
   Object.assign(weapon, progressed)
-  weaponAmmo.value = weapon.magazineSize
+  weaponAmmo.value = effectiveMagazineSize()
   weaponReloadTimer.value = 0
   weaponChargeTimer.value = 0
   weaponCharging.value = false
@@ -810,15 +819,14 @@ function reforgeCurrentWeapon() {
 }
 
 function openWeaponCrate() {
-  if (mode.value === 'battle' || resources.gold < 600) return
-  resources.gold -= 600
+  if (mode.value === 'battle') return null
   const rolled = rollWeaponCrate(weaponCatalog.filter((item) => player.level >= item.unlockLevel), gameplayRandom)
   const progress = weaponProgress[rolled.key]
-  progress.level = Math.min(rolled.maxLevel, progress.level + 5)
-  if (rolled.key === selectedWeaponKey.value) Object.assign(weapon, applyWeaponProgress(rolled, progress))
-  advancedResources.precision += 2
-  bannerText.value = `武器箱开出 ${rolled.name} · 强化等级 +5 / 精密件 +2`
-  saveGame()
+  progress.cores = (progress.cores ?? 0) + 1
+  weaponProgress[rolled.key] = reforgeWeapon(progress, gameplayRandom)
+  if (rolled.key === selectedWeaponKey.value) Object.assign(weapon, applyWeaponProgress(rolled, weaponProgress[rolled.key]))
+  bannerText.value = `武器箱开出 ${rolled.name} · 核心 +1 / 随机词条已重铸`
+  return rolled
 }
 
 function upgradeTalent(id: TalentNodeId) {
@@ -1101,6 +1109,8 @@ function attachmentOrder(item: Attachment) {
 }
 
 function compareInventoryAttachments(a: Attachment, b: Attachment) {
+  if (selectedInventorySort.value === '战力优先') return attachmentPowerScore(b) - attachmentPowerScore(a) || attachmentOrder(b) - attachmentOrder(a)
+  if (selectedInventorySort.value === '可强化优先') return Number(canUpgradeAttachment(b)) - Number(canUpgradeAttachment(a)) || attachmentPowerScore(b) - attachmentPowerScore(a)
   if (selectedInventorySort.value === '槽位整理') {
     return slotRank(a) - slotRank(b) || attachmentRarityRank(b) - attachmentRarityRank(a) || attachmentOrder(b) - attachmentOrder(a)
   }
@@ -1338,7 +1348,8 @@ function buyShopOffer(id: ShopOfferId) {
   advancedResources.reforgeChips += offer.grant.reforgeChips
   shopState.stock[id] -= 1
   if (id === 'attachment-crate') grantAttachmentDrops(1, { 普通: 0, 精良: 0, 稀有: 0, 史诗: 0.65, 传说: 0.3, 神话: 0.05 }, '史诗')
-  bannerText.value = `${offer.label} 已购入`
+  const weaponDrop = id === 'weapon-crate' ? openWeaponCrate() : null
+  bannerText.value = weaponDrop ? `武器箱开出 ${weaponDrop.name} · 核心 +1 / 词条已重铸` : `${offer.label} 已购入`
   saveGame()
 }
 
@@ -1371,10 +1382,19 @@ function getEquippedBonuses(): EquippedBonusTotals {
         speed: total.speed + (part.bonuses?.speed ?? 0) * growth,
         pierce: total.pierce + (part.bonuses?.pierce ?? 0) * growth,
         expGain: total.expGain + (part.bonuses?.expGain ?? 0) * growth,
-        critRate: total.critRate + (part.bonuses?.critRate ?? 0) * growth
+        critRate: total.critRate + (part.bonuses?.critRate ?? 0) * growth,
+        critDamage: total.critDamage + (part.bonuses?.critDamage ?? 0) * growth,
+        magazine: total.magazine + (part.bonuses?.magazine ?? 0) * growth,
+        reload: total.reload + (part.bonuses?.reload ?? 0) * growth,
+        range: total.range + (part.bonuses?.range ?? 0) * growth,
+        knockback: total.knockback + (part.bonuses?.knockback ?? 0) * growth,
+        statusChance: total.statusChance + (part.bonuses?.statusChance ?? 0) * growth,
+        defense: total.defense + (part.bonuses?.defense ?? 0) * growth,
+        armor: total.armor + (part.bonuses?.armor ?? 0) * growth,
+        luck: total.luck + (part.bonuses?.luck ?? 0) * growth
       }
     },
-    { damage: 0, fireRate: 0, maxHp: 0, pickup: 0, speed: 0, pierce: 0, expGain: 0, critRate: 0 }
+    { damage: 0, fireRate: 0, maxHp: 0, pickup: 0, speed: 0, pierce: 0, expGain: 0, critRate: 0, critDamage: 0, magazine: 0, reload: 0, range: 0, knockback: 0, statusChance: 0, defense: 0, armor: 0, luck: 0 }
   )
 }
 
@@ -1385,10 +1405,10 @@ function applyBaseStats() {
   const campaignGrowth = r5CampaignGrowthForHighestCleared(highestCleared.value)
   player.maxHp = 120 + (player.level - 1) * 12 + gear.maxHp + talents.maxHp + sets.maxHp + campaignGrowth.maxHpBonus
   player.hp = Math.min(player.maxHp, player.hp)
-  player.defense = Math.floor((player.level - 1) * 0.8 + talents.damageReduction * 120 + activeEquippedParts.value.length * 2)
-  player.maxArmor = Math.round(player.maxHp * 0.25 + player.defense * 2)
+  player.defense = Math.floor((player.level - 1) * 0.8 + talents.damageReduction * 120 + gear.defense)
+  player.maxArmor = Math.round(player.maxHp * 0.25 + player.defense * 2 + gear.armor)
   player.armor = Math.min(player.maxArmor, player.armor)
-  player.luck = Math.min(60, Math.floor(player.level / 10 + talents.dropRate * 100 + gear.expGain * 10))
+  player.luck = Math.min(60, Math.floor(player.level / 10 + talents.dropRate * 100 + gear.luck))
   modifiers.damage = (1 + gear.damage + talents.damage + sets.damage) * campaignGrowth.damageMultiplier
   modifiers.fireRate = 1 + gear.fireRate + talents.fireRate + sets.fireRate
   modifiers.speed = 1 + gear.speed + talents.speed
@@ -1396,8 +1416,13 @@ function applyBaseStats() {
   modifiers.pierceBonus = gear.pierce + talents.pierce + sets.pierce
   modifiers.expGain = 1 + gear.expGain + talents.expGain
   modifiers.critRate = Math.min(0.75, gear.critRate + talents.critRate)
+  modifiers.critDamage = gear.critDamage
+  modifiers.magazine = Math.max(0, gear.magazine)
+  modifiers.reload = Math.min(0.75, Math.max(0, gear.reload))
+  modifiers.range = Math.max(0, gear.range)
+  modifiers.knockback = Math.max(0, gear.knockback)
   modifiers.statusPower = 1 + talents.statusPower + sets.statusPower
-  modifiers.statusChance = talents.statusChance
+  modifiers.statusChance = talents.statusChance + gear.statusChance
   modifiers.shockChance = sets.shockChance
   modifiers.statusDuration = 1 + talents.statusDuration
   modifiers.goldGain = 1 + talents.goldGain + sets.goldGain + (hasSpecialEffect('gold-conversion') ? 0.15 : 0)
@@ -1409,7 +1434,8 @@ function applyBaseStats() {
   modifiers.lifesteal = talents.lifesteal + sets.lifesteal
   modifiers.dodge = Math.min(0.65, talents.dodge)
   modifiers.cooldownReduction = Math.min(0.6, talents.cooldownReduction)
-  modifiers.eliteDamage = sets.eliteDamage
+  modifiers.eliteDamage = sets.eliteDamage + (hasSpecialEffect('elite-hunter') ? 0.12 : 0)
+  modifiers.bossDamage = hasSpecialEffect('boss-hunter') ? 0.1 : 0
   modifiers.extraChains = sets.extraChains
   modifiers.noPierceFalloff = sets.noPierceFalloff || hasSpecialEffect('no-pierce-falloff')
   modifiers.burnExplosion = sets.burnExplosion
@@ -1428,6 +1454,25 @@ function applyBaseStats() {
   modifiers.blackHole = hasSpecialEffect('black-hole')
   modifiers.threatTargeting = hasSpecialEffect('threat-targeting')
   modifiers.eliteOverdrive = hasSpecialEffect('elite-overdrive')
+  modifiers.splitShot = hasSpecialEffect('split-shot')
+  modifiers.ricochet = hasSpecialEffect('ricochet')
+  modifiers.periodicShield = hasSpecialEffect('periodic-shield')
+  modifiers.critExplosion = hasSpecialEffect('crit-explosion')
+  modifiers.chainHit = hasSpecialEffect('chain-hit')
+  modifiers.supportDrone = hasSpecialEffect('support-drone')
+  modifiers.highHealthOverload = hasSpecialEffect('high-health-overload')
+  modifiers.timeField = hasSpecialEffect('time-field')
+  modifiers.armorBreak = hasSpecialEffect('armor-break')
+  modifiers.guaranteedCrit = hasSpecialEffect('guaranteed-crit')
+  modifiers.ammoReturn = hasSpecialEffect('ammo-return')
+  modifiers.reloadOverdrive = hasSpecialEffect('reload-overdrive')
+  modifiers.vulnerabilityCrit = hasSpecialEffect('vulnerability-crit')
+  modifiers.statusPower += hasSpecialEffect('elemental-boost') ? 0.2 : 0
+  modifiers.evolution = hasSpecialEffect('evolution')
+}
+
+function effectiveMagazineSize() {
+  return Math.max(1, Math.round(weapon.magazineSize * (1 + modifiers.magazine)))
 }
 
 function buildSavePayload(): SaveData {
@@ -1483,7 +1528,7 @@ function applySaveData(saved: Partial<SaveData>) {
   const savedSupport = weaponCatalog.find((item) => item.key === saved.selectedSupportWeaponKey && item.key !== savedWeapon.key && player.level >= item.unlockLevel)
   selectedSupportWeaponKey.value = savedSupport?.key ?? null
   Object.assign(weapon, applyWeaponProgress(savedWeapon, weaponProgress[savedWeapon.key]))
-  weaponAmmo.value = weapon.magazineSize
+  weaponAmmo.value = effectiveMagazineSize()
   weaponReloadTimer.value = 0
   weaponChargeTimer.value = 0
   weaponCharging.value = false
@@ -1557,12 +1602,52 @@ const leaderboardMetric = ref<LeaderboardMetric>('event-score')
 const onlineLeaderboard = ref<Array<{ username: string; score: number; rank: number; currentUser: boolean }>>([])
 const onlineCurrentRank = ref<number | null>(null)
 const onlineSeasonStatus = reactive({ loading: false, label: '尚未同步联网赛季', error: '' })
+const activeRankedRun = ref<null | { runId: string; seasonId: string; activityId: string; mode: RankedOperationMode; stage: number }>(null)
+let rankedRunGeneration = 0
 
 async function refreshLiveOps() {
   try {
-    onlineLiveOps.value = await cloud.apiRequest('/api/live-ops')
+    const snapshot = await cloud.apiRequest<NonNullable<typeof onlineLiveOps.value>>('/api/live-ops')
+    onlineLiveOps.value = snapshot
+    if (seasonState.id !== snapshot.season.id) {
+      Object.assign(seasonState, emptySeasonState(snapshot.season.id))
+      saveGame()
+      onlineSeasonStatus.label = `${snapshot.season.id} 已开启，本地赛季成绩已重置`
+    }
   } catch (error) {
     onlineSeasonStatus.error = error instanceof Error ? error.message : '活动日历读取失败'
+  }
+}
+
+function currentActivityId() {
+  return onlineLiveOps.value?.activity.id ?? liveOpsSnapshot().activity.id
+}
+
+function beginRankedRun(operationMode: RankedOperationMode, runStage: number) {
+  const generation = ++rankedRunGeneration
+  activeRankedRun.value = null
+  if (!cloudHasSession.value || replayRuntime.running) return
+  void cloud.apiRequest<NonNullable<typeof activeRankedRun.value>>('/api/ranked-run/start', 'POST', { mode: operationMode, stage: runStage })
+    .then((ticket) => {
+      if (generation === rankedRunGeneration && mode.value === 'battle' && operationMode === activeOperationMode.value && runStage === stage.value) activeRankedRun.value = ticket
+    })
+    .catch((error) => {
+      if (generation !== rankedRunGeneration) return
+      onlineSeasonStatus.error = error instanceof Error ? `本局未计入联网排行：${error.message}` : '本局未取得排位票据'
+    })
+}
+
+async function completeRankedRun() {
+  const ticket = activeRankedRun.value
+  activeRankedRun.value = null
+  if (!ticket) return
+  try {
+    const result = await cloud.apiRequest<{ seasonId: string; awardedEventScore: number }>('/api/ranked-run/complete', 'POST', { runId: ticket.runId, kills: kills.value })
+    onlineSeasonStatus.label = `${result.seasonId} 排位行动已验证${result.awardedEventScore ? ` · 积分 +${result.awardedEventScore}` : ''}`
+    onlineSeasonStatus.error = ''
+    await refreshLeaderboard()
+  } catch (error) {
+    onlineSeasonStatus.error = error instanceof Error ? `排位结算未入榜：${error.message}` : '排位结算失败'
   }
 }
 
@@ -1594,10 +1679,8 @@ async function syncOnlineSeason() {
   onlineSeasonStatus.loading = true
   onlineSeasonStatus.error = ''
   try {
-    await cloud.push(buildSavePayload())
-    if (cloudConflict.value) throw new Error('云存档存在版本冲突，请先选择保留本地或云端版本')
     const result = await cloud.apiRequest<{ seasonId: string }>('/api/season/submit', 'POST')
-    onlineSeasonStatus.label = `${result.seasonId} 成绩已由云存档校验并同步`
+    onlineSeasonStatus.label = `${result.seasonId} 已读取服务器验证成绩`
     await refreshLeaderboard()
   } catch (error) {
     onlineSeasonStatus.error = error instanceof Error ? error.message : '赛季同步失败'
@@ -1966,7 +2049,7 @@ function shootNearest() {
       const threat = (unit: Enemy) => (unit.boss ? 1000 : unit.elite ? 600 : unit.kind === 'ranged' ? 420 : unit.kind === 'bomber' ? 360 : unit.kind === 'heavy' ? 300 : 100) - Math.hypot(unit.x - player.x, unit.y - player.y) * 0.2
       return threat(enemy) > threat(nearest) ? enemy : nearest
     }
-    if (enemy.boss && b < weapon.range) return enemy
+    if (enemy.boss && b < weapon.range * (1 + modifiers.range)) return enemy
     return b < a ? enemy : nearest
   })
   if (weapon.attackPattern === 'beam') {
@@ -1979,35 +2062,38 @@ function shootNearest() {
   if (weapon.key === 'light-machine-gun') sustainedFireStacks = Math.min(20, sustainedFireStacks + 1)
   else sustainedFireStacks = 0
   const angle = Math.atan2(target.y - player.y, target.x - player.x)
-  const projectileMiddle = (weapon.projectiles - 1) / 2
-  for (let projectile = 0; projectile < weapon.projectiles; projectile += 1) {
-    const spreadOffset = weapon.projectiles > 1 ? (projectile - projectileMiddle) * (weapon.spread / Math.max(1, projectileMiddle)) : (gameplayRandom() - 0.5) * weapon.spread
+  const projectileCount = weapon.projectiles + (modifiers.splitShot ? 1 : 0)
+  const projectileMiddle = (projectileCount - 1) / 2
+  for (let projectile = 0; projectile < projectileCount; projectile += 1) {
+    const spreadOffset = projectileCount > 1 ? (projectile - projectileMiddle) * (weapon.spread / Math.max(1, projectileMiddle)) : (gameplayRandom() - 0.5) * weapon.spread
     const finalAngle = angle + spreadOffset
-    const firstRoundBonus = weapon.key === 'pistol' && weaponAmmo.value === weapon.magazineSize ? weapon.critRate : 0
+    const firstRoundBonus = weapon.key === 'pistol' && weaponAmmo.value === effectiveMagazineSize() ? weapon.critRate : 0
     const bossCritBonus = weapon.key === 'frost-sniper' && target.boss ? 0.12 : 0
     const eliteBuffBonus = eliteSetBuffTimer > 0 ? 0.25 : 0
-    const critical = gameplayRandom() < Math.min(0.9, modifiers.critRate + weapon.critRate + firstRoundBonus + bossCritBonus + eliteBuffBonus)
+    const critical = (modifiers.guaranteedCrit && shotsFiredThisRun % 10 === 0) || gameplayRandom() < Math.min(0.9, modifiers.critRate + weapon.critRate + firstRoundBonus + bossCritBonus + eliteBuffBonus)
     const lockMultiplier = weapon.attackPattern === 'beam' ? 1 + lockedTargetHits * 0.025 : 1
-    const criticalMultiplier = critical ? weapon.critDamage + (weapon.key === 'frost-sniper' && target.boss ? 0.5 : 0) : 1
+    const criticalMultiplier = critical ? weapon.critDamage + modifiers.critDamage + (weapon.key === 'frost-sniper' && target.boss ? 0.5 : 0) : 1
     const quantumMultiplier = quantumShotActive ? 1.35 : 1
     const fortressMultiplier = stationarySeconds >= 1 && modifiers.fortress ? 1.15 : 1
     const lastStandMultiplier = lastStandBuffTimer > 0 ? 1.3 : 1
     const fireMultiplier = weapon.element === '火焰' ? 1 + modifiers.fireDamage : 1
     const goldMultiplier = modifiers.goldConversion ? 1 + Math.min(0.2, Math.floor(resources.gold / 500) * 0.01) : 1
+    const evolutionMultiplier = modifiers.evolution ? 1 + Math.min(0.1, Math.floor(highestCleared.value / 100) * 0.002) : 1
     bullets.push({
       x: player.x,
       y: player.y,
       vx: Math.cos(finalAngle) * weapon.bulletSpeed,
       vy: Math.sin(finalAngle) * weapon.bulletSpeed,
-      damage: weapon.damage * modifiers.damage * criticalMultiplier * lockMultiplier * quantumMultiplier * fortressMultiplier * lastStandMultiplier * fireMultiplier * goldMultiplier,
-      life: weapon.range / weapon.bulletSpeed,
+      damage: weapon.damage * modifiers.damage * criticalMultiplier * lockMultiplier * quantumMultiplier * fortressMultiplier * lastStandMultiplier * fireMultiplier * goldMultiplier * evolutionMultiplier,
+      life: weapon.range * (1 + modifiers.range) / weapon.bulletSpeed,
       pierce: weapon.pierce + modifiers.pierceBonus,
       critical,
       element: weapon.element,
       statusChance: Math.min(0.95, weapon.statusChance + modifiers.statusChance + (weapon.element === '电击' ? modifiers.shockChance : 0)),
-      explosionRadius: weapon.explosionRadius,
-      chainCount: weapon.chainCount + modifiers.extraChains,
-      knockback: weapon.knockback,
+      explosionRadius: Math.max(weapon.explosionRadius, critical && modifiers.critExplosion ? 72 : 0),
+      chainCount: weapon.chainCount + modifiers.extraChains + (modifiers.chainHit ? 1 : 0),
+      knockback: weapon.knockback * (1 + modifiers.knockback),
+      ricochets: modifiers.ricochet ? 1 : 0,
       hitEnemyIds: new Set<number>()
     })
   }
@@ -2090,7 +2176,7 @@ function dealDamage(enemy: Enemy, rawDamage: number, critical = false, pierce = 
   if (enemy.boss) multiplier = Math.min(1, 0.76 + pierce * 0.055)
   const hpBefore = enemy.hp
   const statusDamageMultiplier = (enemy.statuses.shockSeconds > 0 ? 1.12 : 1) * (enemy.statuses.vulnerableSeconds > 0 ? 1.18 : 1)
-  const eliteMultiplier = enemy.elite || enemy.boss ? 1 + modifiers.eliteDamage : 1
+  const eliteMultiplier = enemy.elite || enemy.boss ? 1 + modifiers.eliteDamage + (enemy.boss ? modifiers.bossDamage : 0) : 1
   const setBuffMultiplier = eliteSetBuffTimer > 0 ? 1.25 : 1
   const guardMultiplier = wardenProtector(enemy) ? 0.75 : 1
   const incomingAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x)
@@ -2109,7 +2195,9 @@ function dealDamage(enemy: Enemy, rawDamage: number, critical = false, pierce = 
     const nonCriticalApplied = Math.min(hpBefore, baseRawDamage * nonCriticalMultiplier)
     runStats.criticalExtraDamage += Math.max(0, applied - nonCriticalApplied)
     recordAllTaskEvents('critical', Math.round(applied))
+    if (modifiers.vulnerabilityCrit) enemy.statuses.vulnerableSeconds = Math.max(enemy.statuses.vulnerableSeconds, 2.5)
   }
+  if (modifiers.armorBreak) enemy.statuses.armorBreakSeconds = Math.max(enemy.statuses.armorBreakSeconds, 2)
   enemy.hp -= applied
   if (enemy.kind === 'stealth') enemy.revealedUntil = stageTimer.value + 2
   const linked = shieldLinkPartner(enemy)
@@ -2527,6 +2615,7 @@ function useSkill(key: SkillKey) {
 
 function killEnemy(index: number) {
   const enemy = enemies[index]
+  if (modifiers.ammoReturn && weaponAmmo.value < effectiveMagazineSize()) weaponAmmo.value += 1
   if (!enemy) return
   if (enemy.elite && !enemy.boss) r4Telemetry.eliteKillDurations.push(Math.max(0, stageTimer.value - enemy.spawnedAt))
   kills.value += 1
@@ -2612,8 +2701,11 @@ function damagePlayer(rawDamage: number, sourceX: number, sourceY: number, sourc
     return
   }
   const damage = rawDamage * (1 - modifiers.damageReduction)
-  const shieldAbsorbed = Math.min(fortressShield, damage)
-  fortressShield -= shieldAbsorbed
+  const periodicAbsorbed = Math.min(periodicShield, damage)
+  periodicShield -= periodicAbsorbed
+  const fortressAbsorbed = Math.min(fortressShield, damage - periodicAbsorbed)
+  fortressShield -= fortressAbsorbed
+  const shieldAbsorbed = periodicAbsorbed + fortressAbsorbed
   const damageResult = applyPlayerArmorDamage(damage - shieldAbsorbed, sourceKind === 'boss' ? 0.8 : 1)
   const hpDamage = damageResult.hpDamage
   if (sourceAffixes.includes('suppression')) {
@@ -2676,6 +2768,7 @@ function fireBossRadialBarrage(enemy: Enemy, projectileCount = 12) {
 function completeVictory() {
   const independent = !operationAdvancesCampaign(activeOperationMode.value)
   const operation = getOperationDefinition(activeOperationMode.value)
+  const activityBonus = activityBonusFor(currentActivityId(), activeOperationMode.value)
   let objectiveSummary: string | undefined
   if (!independent) {
     highestCleared.value = Math.max(highestCleared.value, stage.value)
@@ -2710,26 +2803,29 @@ function completeVictory() {
   resources.alloy += reward.alloy
   resources.parts += reward.parts
   if (activeOperationMode.value === 'bounty') {
-    advancedResources.honor += Math.min(24, 8 + Math.floor(stage.value / 1000) * 2)
+    const baseHonor = Math.min(24, 8 + Math.floor(stage.value / 1000) * 2)
+    advancedResources.honor += Math.round(baseHonor * activityBonus.honorMultiplier)
     advancedResources.reforgeChips += 1
-    seasonState.score += 35
+    seasonState.score += Math.round(35 * activityBonus.seasonScoreMultiplier)
     seasonState.bestBountySeconds = seasonState.bestBountySeconds == null ? stageTimer.value : Math.min(seasonState.bestBountySeconds, stageTimer.value)
     objectiveSummary = `悬赏目标：${bountyObjective.value.targetLabel} ${bountyTargetKills.value}/${bountyObjective.value.requiredKills} · 荣誉与重铸芯片已入账`
   }
   if (activeOperationMode.value === 'event') {
     const eventRewards = eventClearRewards(seasonState.eventClears)
-    advancedResources.precision += eventRewards.precision
+    advancedResources.precision += eventRewards.precision + activityBonus.precisionBonus
     advancedResources.energyCores += eventRewards.energyCores
     seasonState.score += eventRewards.seasonScore
     seasonState.eventClears += 1
+    const precisionTotal = eventRewards.precision + activityBonus.precisionBonus
     objectiveSummary = eventRewards.firstClear
-      ? '战区突袭首通：赛季积分 +100、能量核心 +1、精密元件 +2'
-      : '战区突袭重复完成：基础奖励与精密元件 +2；首通奖励不重复发放'
+      ? `战区突袭首通：赛季积分 +100、能量核心 +1、精密元件 +${precisionTotal}`
+      : `战区突袭重复完成：基础奖励与精密元件 +${precisionTotal}；首通奖励不重复发放`
   }
   if (activeOperationMode.value === 'survival') {
-    seasonState.score += 25
+    seasonState.score += Math.round(25 * activityBonus.seasonScoreMultiplier)
     seasonState.bestSurvivalKills = Math.max(seasonState.bestSurvivalKills, kills.value)
   }
+  if (activeOperationMode.value === 'challenge' && activityBonus.precisionBonus > 0) advancedResources.precision += activityBonus.precisionBonus
   if (bossDefeated && activeOperationMode.value === 'campaign') advancedResources.precision += 1
   if (stage.value === 10000 && bossDefeated) advancedResources.energyCores += 2
   grantExp(reward.exp)
@@ -2749,6 +2845,7 @@ function completeVictory() {
   clearCombatFeedback()
   mode.value = 'settlement'
   saveGame()
+  void completeRankedRun()
 }
 
 function update(delta: number) {
@@ -2801,7 +2898,7 @@ function update(delta: number) {
     announceBanner('死线增幅启动 · 伤害与吸血提高', 'elite')
   }
   weaponReloadTimer.value = Math.max(0, weaponReloadTimer.value - delta)
-  if (weaponReloadTimer.value <= 0 && weaponAmmo.value <= 0) weaponAmmo.value = weapon.magazineSize
+  if (weaponReloadTimer.value <= 0 && weaponAmmo.value <= 0) weaponAmmo.value = effectiveMagazineSize()
   if (weaponCharging.value) weaponChargeTimer.value = Math.max(0, weaponChargeTimer.value - delta)
   if (modifiers.healthRegen > 0) player.hp = Math.min(player.maxHp, player.hp + modifiers.healthRegen * delta)
   supportWeaponTimer = Math.max(0, supportWeaponTimer - delta)
@@ -2896,8 +2993,9 @@ function update(delta: number) {
         if (!quantumShotActive) weaponAmmo.value -= 1
         const eliteFireRateMultiplier = eliteSetBuffTimer > 0 ? 1.25 : 1
         const overloadMultiplier = overloadTimer > 0 ? 1.75 + (skillProgress.overload - 1) * 0.08 + (skillBuildLinks.value.overload ? 0.15 : 0) : 1
-        player.fireTimer = 1 / (weapon.fireRate * modifiers.fireRate * eliteFireRateMultiplier * overloadMultiplier * (1 + sustainedFireStacks * 0.015))
-        if (weaponAmmo.value <= 0) weaponReloadTimer.value = weapon.reloadTime
+        const moduleOverloadMultiplier = modifiers.highHealthOverload && player.hp / player.maxHp >= 0.8 ? 1.18 : 1
+        player.fireTimer = 1 / (weapon.fireRate * modifiers.fireRate * eliteFireRateMultiplier * overloadMultiplier * moduleOverloadMultiplier * (1 + sustainedFireStacks * 0.015))
+        if (weaponAmmo.value <= 0) weaponReloadTimer.value = weapon.reloadTime * (1 - modifiers.reload) * (modifiers.reloadOverdrive ? 0.8 : 1)
       }
       weaponCharging.value = false
       weaponChargeTimer.value = 0
@@ -2918,6 +3016,38 @@ function update(delta: number) {
         dealDamage(enemy, 60 * modifiers.damage, false, 0, '能量', 0.5)
       }
       announceBanner('黑洞模块 · 牵引爆发', 'elite')
+    }
+  }
+
+  if (modifiers.periodicShield) {
+    moduleShieldTimer -= delta
+    if (moduleShieldTimer <= 0) {
+      moduleShieldTimer = 8
+      periodicShield = Math.max(periodicShield, player.maxHp * 0.15)
+      announceBanner('护盾模块 · 周期护盾就绪', 'normal')
+    }
+  }
+
+  if (modifiers.timeField) {
+    timeFieldTimer -= delta
+    if (timeFieldTimer <= 0) {
+      timeFieldTimer = 8
+      for (const enemy of enemies) {
+        if (Math.hypot(enemy.x - player.x, enemy.y - player.y) <= 300) enemy.statuses.chillSeconds = Math.max(enemy.statuses.chillSeconds, 3)
+      }
+      announceBanner('时滞模块 · 区域减速', 'normal')
+    }
+  }
+
+  if (modifiers.supportDrone && enemies.length) {
+    droneTimer -= delta
+    if (droneTimer <= 0) {
+      droneTimer = 2.2
+      const target = enemies.filter((enemy) => enemy.hp > 0).sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y))[0]
+      if (target) {
+        const applied = dealDamage(target, weapon.damage * modifiers.damage * 0.4, false, 0, '能量', 0.25)
+        hitTexts.push({ x: target.x, y: target.y - target.radius - 26, value: `无人机 ${Math.round(applied)}`, life: 0.5, maxLife: 0.5, color: '#73cfe8', critical: true })
+      }
     }
   }
 
@@ -3226,6 +3356,12 @@ function update(delta: number) {
     bullet.x += bullet.vx * delta
     bullet.y += bullet.vy * delta
     bullet.life -= delta
+    if (bullet.ricochets > 0) {
+      let bounced = false
+      if (bullet.x <= area.x || bullet.x >= area.x + area.width) { bullet.vx *= -1; bullet.x = clamp(bullet.x, area.x, area.x + area.width); bounced = true }
+      if (bullet.y <= area.y || bullet.y >= area.y + area.height) { bullet.vy *= -1; bullet.y = clamp(bullet.y, area.y, area.y + area.height); bounced = true }
+      if (bounced) bullet.ricochets -= 1
+    }
   }
 
   for (let b = bullets.length - 1; b >= 0; b--) {
@@ -3235,7 +3371,7 @@ function update(delta: number) {
       if (!bullet.hitEnemyIds.has(enemy.id) && Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y) <= enemy.radius + 4) {
         bullet.hitEnemyIds.add(enemy.id)
         const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y)
-        const closeRangeMultiplier = weapon.attackPattern === 'spread' ? 1 + Math.max(0, 1 - distance / weapon.range) * 0.5 : 1
+        const closeRangeMultiplier = weapon.attackPattern === 'spread' ? 1 + Math.max(0, 1 - distance / (weapon.range * (1 + modifiers.range))) * 0.5 : 1
         const damage = dealDamage(enemy, bullet.damage * closeRangeMultiplier, bullet.critical, totalPiercePreview.value, bullet.element, bullet.statusChance)
         if (weapon.attackPattern === 'dual') dualMoveBuffTimer = 2
         enemy.statuses.knockbackForce = Math.max(enemy.statuses.knockbackForce, bullet.knockback)
@@ -3906,8 +4042,12 @@ function resetRunState(restoreHp = true) {
   lastStandBuffTimer = 0
   lastStandCooldown = 0
   blackHoleTimer = 8
+  moduleShieldTimer = 8
+  timeFieldTimer = 8
+  droneTimer = 2.2
   stationarySeconds = 0
   fortressShield = 0
+  periodicShield = 0
   shotsFiredThisRun = 0
   stormHitCounter = 0
   quantumShotActive = false
@@ -3920,7 +4060,7 @@ function resetRunState(restoreHp = true) {
   sustainedFireStacks = 0
   lastLockedTargetId = 0
   lockedTargetHits = 0
-  weaponAmmo.value = weapon.magazineSize
+  weaponAmmo.value = effectiveMagazineSize()
   weaponReloadTimer.value = 0
   weaponChargeTimer.value = 0
   weaponCharging.value = false
@@ -3998,6 +4138,7 @@ function startStageWithHealth(restoreHp: boolean) {
   applyBaseStats()
   resetRunState(restoreHp)
   mode.value = 'battle'
+  beginRankedRun(activeOperationMode.value, stage.value)
   announceBanner(`${getOperationDefinition(activeOperationMode.value).shortLabel} · 第 1 波 · ${currentWaveDefinition.value?.label}`, 'normal')
   playSound('wave')
 }

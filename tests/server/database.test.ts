@@ -27,9 +27,9 @@ describe('云存档数据库初始化', () => {
 
   it('首次建表失败后清除失败缓存并允许下一次安全重试', async () => {
     pgMocks.query
-      .mockResolvedValueOnce({ rows: [{ users_table: null, saves_table: null }] })
+      .mockResolvedValueOnce({ rows: [{ users_table: null, saves_table: null, season_scores_table: null, ranked_progress_table: null, ranked_runs_table: null }] })
       .mockRejectedValueOnce(new Error('temporary connection failure'))
-      .mockResolvedValueOnce({ rows: [{ users_table: null, saves_table: null }] })
+      .mockResolvedValueOnce({ rows: [{ users_table: null, saves_table: null, season_scores_table: null, ranked_progress_table: null, ranked_runs_table: null }] })
       .mockResolvedValueOnce({ rows: [] })
     const { ensureCloudSchema } = await import('../../server/utils/database')
 
@@ -39,13 +39,15 @@ describe('云存档数据库初始化', () => {
   })
 
   it('表已预建时只探测 schema，不要求运行时重复执行 DDL', async () => {
-    pgMocks.query.mockResolvedValueOnce({ rows: [{ users_table: 'gunfight_users', saves_table: 'gunfight_cloud_saves', season_scores_table: 'gunfight_season_scores' }] })
+    pgMocks.query.mockResolvedValueOnce({ rows: [{ users_table: 'gunfight_users', saves_table: 'gunfight_cloud_saves', season_scores_table: 'gunfight_season_scores', ranked_progress_table: 'gunfight_ranked_progress', ranked_runs_table: 'gunfight_ranked_runs' }] })
     const { ensureCloudSchema } = await import('../../server/utils/database')
 
     await expect(ensureCloudSchema()).resolves.toBeUndefined()
     expect(pgMocks.query).toHaveBeenCalledOnce()
     expect(pgMocks.query).toHaveBeenCalledWith(expect.stringContaining("to_regclass('public.gunfight_users')"))
     expect(pgMocks.query).toHaveBeenCalledWith(expect.stringContaining("to_regclass('public.gunfight_season_scores')"))
+    expect(pgMocks.query).toHaveBeenCalledWith(expect.stringContaining("to_regclass('public.gunfight_ranked_progress')"))
+    expect(pgMocks.query).toHaveBeenCalledWith(expect.stringContaining("to_regclass('public.gunfight_ranked_runs')"))
   })
 
   it('未配置数据库时返回 503 且不创建连接池', async () => {
