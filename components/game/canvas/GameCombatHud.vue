@@ -4,7 +4,7 @@
         <span>●</span>
         <b>{{ resources.gold }}</b>
       </div>
-      <button type="button" disabled title="设置功能开发中">⚙ 设置</button>
+      <button type="button" data-testid="combat-settings" @click="openSettings">⚙ 设置</button>
       <button type="button" data-testid="return-to-base" @click="returnToBase">⇥ 退出</button>
     </section>
 
@@ -159,7 +159,7 @@ import { onBeforeUnmount, ref } from 'vue'
 import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
 
 const {
-  mode, resources, returnToBase, player, hpPercent, damagePreview, kills, targetKills,
+  mode, resources, returnToBase, openSettings, player, hpPercent, damagePreview, kills, targetKills,
   nextLevelExp, runStats, currentWave, totalWaves, currentWaveDefinition, wavePlan,
   waveStatusText, nextEnemyPreview, operationDefinition, operationProgressText, bossHud, damageDirection, killNotice, elapsedSeconds, formatClock,
   skills, useSkill, upgradeChoices, chooseUpgrade, weapon, weaponAmmo, weaponReloadTimer, weaponChargeTimer, weaponCharging,

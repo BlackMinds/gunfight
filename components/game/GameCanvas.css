@@ -3159,6 +3159,493 @@
   }
 }
 
+/* 2026-07-26：基地工作区拆分与可用设置终端。 */
+.game-screen .base-workspace-bar {
+  position: sticky;
+  top: -1px;
+  z-index: 12;
+  margin: -4px -4px 8px;
+  padding: 8px 8px 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  border-bottom: 1px solid rgba(240, 191, 87, 0.22);
+  background: linear-gradient(180deg, rgba(16, 20, 20, 0.99) 76%, rgba(16, 20, 20, 0.94));
+}
+
+.game-screen .base-workspace-bar > div {
+  display: grid;
+  gap: 2px;
+}
+
+.game-screen .base-workspace-bar > div .panel-kicker {
+  margin: 0;
+  font-size: 10px;
+}
+
+.game-screen .base-workspace-bar > div > b {
+  font-size: 17px;
+  white-space: nowrap;
+}
+
+.game-screen .base-workspace-bar nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(92px, 1fr));
+  gap: 5px;
+}
+
+.game-screen .base-workspace-bar nav button {
+  min-height: 42px;
+  padding: 7px 10px;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  border-color: rgba(243, 239, 229, 0.11);
+  color: #aab1af;
+  background: rgba(243, 239, 229, 0.035);
+  font-weight: 850;
+}
+
+.game-screen .base-workspace-bar nav button span {
+  color: #708084;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.game-screen .base-workspace-bar nav button.active {
+  border-color: rgba(240, 191, 87, 0.66);
+  color: #ffe08b;
+  background: linear-gradient(180deg, rgba(240, 191, 87, 0.17), rgba(240, 191, 87, 0.07));
+  box-shadow: inset 0 -2px 0 #dba743;
+}
+
+.game-screen .base-workspace-bar nav button.active span {
+  color: #f4cc72;
+}
+
+.game-screen.base-workspace-mission.mode-base .base-panel,
+.game-screen.base-workspace-growth.mode-base .base-panel {
+  left: 50%;
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  width: min(1120px, calc(100vw - 64px));
+  height: min(820px, calc(100vh - 48px));
+  max-height: calc(100vh - 48px);
+  transform: translate(-50%, -50%);
+}
+
+.game-screen.base-workspace-mission .base-hero {
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+}
+
+.game-screen.base-workspace-equipment .base-backpack {
+  padding-top: 2px;
+  border-top: 0;
+}
+
+.game-screen.base-workspace-equipment .base-backpack-list > .empty-backpack {
+  grid-column: 1 / -1;
+  min-height: 170px;
+  margin: 0;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(243, 239, 229, 0.14);
+  text-align: center;
+}
+
+.game-screen .settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  padding: 18px;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 5, 6, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.game-screen .cloud-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  padding: 18px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(240, 191, 87, 0.08), transparent 34%),
+    rgba(4, 6, 7, 0.94);
+}
+
+.game-screen .cloud-gate > section {
+  width: min(520px, calc(100vw - 28px));
+  padding: clamp(24px, 4vw, 42px);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  border: 1px solid rgba(240, 191, 87, 0.36);
+  border-top: 3px solid #f0bf57;
+  background:
+    linear-gradient(135deg, rgba(240, 191, 87, 0.08), transparent 32%),
+    rgba(13, 17, 18, 0.98);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72);
+  text-align: center;
+}
+
+.game-screen .cloud-gate h1,
+.game-screen .cloud-gate p {
+  margin: 0;
+}
+
+.game-screen .cloud-gate h1 {
+  font-size: clamp(25px, 4vw, 36px);
+}
+
+.game-screen .cloud-gate > section > p:not(.panel-kicker),
+.game-screen .cloud-gate small {
+  max-width: 38em;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.game-screen .cloud-gate__signal {
+  width: 110px;
+  height: 34px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.game-screen .cloud-gate__signal > * {
+  height: 4px;
+  background: #f0bf57;
+  animation: cloud-gate-pulse 900ms ease-in-out infinite alternate;
+}
+
+.game-screen .cloud-gate__signal > i {
+  animation-delay: 180ms;
+}
+
+.game-screen .cloud-gate__signal > b {
+  animation-delay: 360ms;
+}
+
+.game-screen .cloud-gate__signal.status-error > * {
+  background: #d98068;
+  animation: none;
+}
+
+.game-screen .cloud-gate__signal.status-signed-out > * {
+  background: #849194;
+  animation: none;
+}
+
+.game-screen .cloud-gate__actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.game-screen .cloud-gate button {
+  min-height: 44px;
+  padding: 9px 14px;
+}
+
+.game-screen .cloud-gate button.primary {
+  color: #17130b;
+  border-color: #f3d77e;
+  background: linear-gradient(180deg, #ffe08b, #efb94d 64%, #b66f45);
+  font-weight: 900;
+}
+
+@keyframes cloud-gate-pulse {
+  from { opacity: 0.26; transform: scaleX(0.62); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+
+.game-screen .settings-panel {
+  width: min(620px, calc(100vw - 24px));
+  max-height: min(760px, calc(100dvh - 24px));
+  padding: clamp(18px, 3vw, 28px);
+  display: grid;
+  gap: 18px;
+  overflow-y: auto;
+  border: 1px solid rgba(240, 191, 87, 0.46);
+  border-top: 3px solid #f0bf57;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(240, 191, 87, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(25, 30, 30, 0.99), rgba(9, 12, 13, 0.99));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.68);
+}
+
+.game-screen .settings-panel:focus {
+  outline: none;
+}
+
+.game-screen .settings-panel__head,
+.game-screen .settings-panel__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.game-screen .settings-panel__head h2,
+.game-screen .settings-panel__head p {
+  margin: 0;
+}
+
+.game-screen .settings-panel__head h2 {
+  margin-top: 3px;
+  font-size: 30px;
+}
+
+.game-screen .settings-group {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid rgba(243, 239, 229, 0.11);
+  background: rgba(3, 6, 7, 0.32);
+}
+
+.game-screen .settings-group > div:first-child {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 3px;
+}
+
+.game-screen .settings-group > div:first-child > span,
+.game-screen .settings-panel__foot > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.game-screen .settings-switch {
+  min-height: 62px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(125, 139, 146, 0.18);
+  background: rgba(35, 42, 45, 0.46);
+  cursor: pointer;
+}
+
+.game-screen .settings-switch > span {
+  display: grid;
+  gap: 3px;
+}
+
+.game-screen .settings-switch small,
+.game-screen .settings-account small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.game-screen .settings-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.game-screen .settings-switch i {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border: 1px solid rgba(243, 239, 229, 0.18);
+  border-radius: 999px;
+  background: #262d2e;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.game-screen .settings-switch i::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #899496;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.game-screen .settings-switch input:checked + i {
+  border-color: rgba(240, 191, 87, 0.62);
+  background: rgba(240, 191, 87, 0.24);
+}
+
+.game-screen .settings-switch input:checked + i::after {
+  background: #ffe08b;
+  transform: translateX(20px);
+}
+
+.game-screen .settings-switch:focus-within {
+  outline: 2px solid #ffe08b;
+  outline-offset: 2px;
+}
+
+.game-screen .settings-account {
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(119, 183, 215, 0.22);
+  background: rgba(119, 183, 215, 0.07);
+}
+
+.game-screen .settings-account > div {
+  display: grid;
+  gap: 3px;
+}
+
+.game-screen .settings-account__mark {
+  color: #78a866;
+}
+
+.game-screen .settings-account.status-signed-out .settings-account__mark,
+.game-screen .settings-account.status-error .settings-account__mark {
+  color: #d98068;
+}
+
+.game-screen .settings-actions,
+.game-screen .settings-panel .cloud-conflict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.game-screen .settings-actions .danger-quiet {
+  color: #e9a28f;
+  border-color: rgba(217, 128, 104, 0.36);
+}
+
+.game-screen .settings-link {
+  min-height: 40px;
+  padding: 0 13px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(240, 191, 87, 0.5);
+  color: #f4cc72;
+  background: rgba(240, 191, 87, 0.08);
+  font-size: 13px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.game-screen .settings-panel__foot {
+  padding-top: 3px;
+}
+
+.game-screen .settings-panel__foot .primary {
+  min-width: 112px;
+  min-height: 44px;
+  color: #17130b;
+  border-color: #f3d77e;
+  background: linear-gradient(180deg, #ffe08b, #efb94d 64%, #b66f45);
+}
+
+.game-screen.reduce-motion *,
+.game-screen.reduce-motion *::before,
+.game-screen.reduce-motion *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+}
+
+@media (max-width: 1100px) and (min-width: 721px) {
+  .game-screen.base-workspace-mission.mode-base .base-panel,
+  .game-screen.base-workspace-growth.mode-base .base-panel {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    bottom: 12px;
+    width: auto;
+    height: auto;
+    max-height: none;
+    transform: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .game-screen .base-workspace-bar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .game-screen .base-workspace-bar > div {
+    display: none;
+  }
+
+  .game-screen .base-workspace-bar nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .game-screen .base-workspace-bar nav button {
+    min-width: 0;
+    min-height: 46px;
+    padding: 5px 3px;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+  }
+
+  .game-screen.base-workspace-mission.mode-base .base-panel,
+  .game-screen.base-workspace-growth.mode-base .base-panel {
+    position: relative;
+    left: 0;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    width: calc(100% - 16px);
+    height: auto;
+    max-height: none;
+    margin: 8px;
+    transform: none;
+  }
+
+  .game-screen.mode-base .base-panel .progression-desktop {
+    display: grid !important;
+  }
+
+  .game-screen .settings-backdrop {
+    padding: 8px;
+  }
+
+  .game-screen .cloud-gate {
+    padding: 8px;
+  }
+
+  .game-screen .cloud-gate > section {
+    width: 100%;
+    padding: 24px 18px;
+  }
+
+  .game-screen .cloud-gate__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .game-screen .settings-panel {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    padding: 16px;
+  }
+
+  .game-screen .settings-panel__foot {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* 2026-07-16：三维配件决策、专属效果与真实武器槽位状态。 */
 .game-screen .attachment-special-effect {
   margin: 0;

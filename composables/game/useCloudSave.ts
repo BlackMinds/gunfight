@@ -1,10 +1,8 @@
 import { computed, reactive, ref, shallowRef } from 'vue'
+import { clearCloudSession, readCloudSession, writeCloudSession } from '~/shared/cloud/session'
 
 type TimestampedSave = { savedAt?: number }
 type CloudConflict<T> = { revision: number; payload: T | null; savedAt: string | null }
-
-const TOKEN_KEY = 'gunfight-cloud-token'
-const USER_KEY = 'gunfight-cloud-user'
 
 export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () => T; applyRemote: (payload: T) => void }) {
   const username = ref('')
@@ -12,7 +10,8 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
   const token = ref('')
   const revision = ref(0)
   const conflict = shallowRef<CloudConflict<T> | null>(null)
-  const state = reactive({ status: 'signed-out' as 'signed-out' | 'syncing' | 'ready' | 'conflict' | 'error', label: '云存档未登录', detail: '登录后自动同步，发生版本冲突时由玩家选择保留版本。' })
+  const accessReady = ref(false)
+  const state = reactive({ status: 'signed-out' as 'signed-out' | 'syncing' | 'ready' | 'conflict' | 'error', label: '需要登录', detail: '注册或登录云端账号后才能进入游戏。' })
   const hasSession = computed(() => Boolean(token.value))
   let syncTimer: ReturnType<typeof setTimeout> | null = null
   let queuedPayload: T | null = null
@@ -31,6 +30,7 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
   }
 
   function setReady(detail = `账号 ${username.value} · 已同步修订 ${revision.value}`) {
+    accessReady.value = true
     state.status = 'ready'
     state.label = '云存档已连接'
     state.detail = detail
@@ -54,7 +54,7 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
         conflict.value = { revision: result.revision, payload: result.payload ?? null, savedAt: result.savedAt }
         state.status = 'conflict'
         state.label = '检测到存档冲突'
-        state.detail = '本地和云端都发生了更新，请选择保留哪一个版本。'
+        state.detail = '当前设备进度与云端修订冲突，请选择继续上传当前进度或重新载入云端。'
         return
       }
       revision.value = result.revision
@@ -87,15 +87,8 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
         await push(options.getLocal(), 0)
         return
       }
-      const local = options.getLocal()
-      if ((remote.payload.savedAt ?? 0) > (local.savedAt ?? 0)) {
-        options.applyRemote(remote.payload)
-        setReady('已下载并应用较新的云端存档')
-      } else if ((local.savedAt ?? 0) > (remote.payload.savedAt ?? 0)) {
-        await push(local, remote.revision)
-      } else {
-        setReady()
-      }
+      options.applyRemote(remote.payload)
+      setReady('已读取并应用云端存档')
     } catch (error) {
       if (pullingSession === sessionVersion) setError(error)
     }
@@ -110,8 +103,7 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
       token.value = result.token
       username.value = result.username
       password.value = ''
-      localStorage.setItem(TOKEN_KEY, result.token)
-      localStorage.setItem(USER_KEY, result.username)
+      writeCloudSession(localStorage, result)
       await pullAndMerge()
     } catch (error) {
       setError(error)
@@ -128,11 +120,11 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
     password.value = ''
     revision.value = 0
     conflict.value = null
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
+    accessReady.value = false
+    clearCloudSession(localStorage)
     state.status = 'signed-out'
-    state.label = '云存档未登录'
-    state.detail = '本地存档继续可用；登录后恢复自动同步。'
+    state.label = '需要登录'
+    state.detail = '已退出账号，请重新登录后继续游戏。'
   }
 
   function queueSync(payload: T) {
@@ -157,18 +149,19 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
     const pending = conflict.value
     if (!pending) return
     if (!pending.payload) {
-      setError(new Error('云端没有可采用的有效存档，请保留本地版本'))
+      setError(new Error('云端没有可采用的有效存档，请继续上传当前进度'))
       return
     }
     options.applyRemote(pending.payload)
     revision.value = pending.revision
     conflict.value = null
-    setReady('已采用云端版本并覆盖本地存档')
+    setReady('已重新载入云端存档')
   }
 
   function initialize() {
-    token.value = localStorage.getItem(TOKEN_KEY) ?? ''
-    username.value = localStorage.getItem(USER_KEY) ?? ''
+    const storedSession = readCloudSession(localStorage)
+    token.value = storedSession?.token ?? ''
+    username.value = storedSession?.username ?? ''
     if (token.value) {
       sessionVersion += 1
       void pullAndMerge()
@@ -179,5 +172,5 @@ export function useCloudSave<T extends TimestampedSave>(options: { getLocal: () 
     return request<R>(path, method, body)
   }
 
-  return { username, password, revision, conflict, state, hasSession, login, register, logout, push, pullAndMerge, queueSync, keepLocalVersion, useCloudVersion, initialize, apiRequest }
+  return { username, password, revision, conflict, state, hasSession, accessReady, login, register, logout, push, pullAndMerge, queueSync, keepLocalVersion, useCloudVersion, initialize, apiRequest }
 }

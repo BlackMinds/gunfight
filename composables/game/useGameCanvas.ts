@@ -192,6 +192,7 @@ type AttachmentBuildTagFilter = AttachmentBuildTag | '全部'
 type CharacterStatTone = 'offense' | 'survival' | 'mobility' | 'growth'
 type CharacterStat = { key: string; label: string; value: string | number; hint: string; tone: CharacterStatTone }
 type Mode = 'base' | 'battle' | 'settlement'
+type BaseWorkspace = 'mission' | 'equipment' | 'growth'
 type PlayArea = { x: number; y: number; width: number; height: number }
 type SaveData = {
   saveVersion: number
@@ -254,9 +255,16 @@ declare global {
 
 export function useGameCanvas() {
 const canvasRef = ref<HTMLCanvasElement | null>(null)
-const SAVE_KEY = 'gunfight-growth-save-v1'
+const TEST_SAVE_KEY = 'gunfight-growth-save-v1'
+const usesLocalTestFixture = import.meta.env.MODE === 'test'
+const SOUND_SETTING_KEY = 'gunfight-setting-sound'
+const MOTION_SETTING_KEY = 'gunfight-setting-reduced-motion'
 const keys = new Set<string>()
 const mode = ref<Mode>('base')
+const activeBaseWorkspace = ref<BaseWorkspace>('mission')
+const settingsOpen = ref(false)
+const soundEnabled = ref(true)
+const reducedMotion = ref(false)
 const stage = ref(1)
 const stageDraft = ref(1)
 const highestCleared = ref(0)
@@ -1506,7 +1514,7 @@ function buildSavePayload(): SaveData {
 function saveGame() {
   if (!canPersist || replayPersistenceSuppressed) return
   const payload = buildSavePayload()
-  localStorage.setItem(SAVE_KEY, JSON.stringify(payload))
+  if (usesLocalTestFixture) localStorage.setItem(TEST_SAVE_KEY, JSON.stringify(payload))
   cloud.queueSync(payload)
 }
 
@@ -1563,13 +1571,14 @@ function applySaveData(saved: Partial<SaveData>) {
   selectedBuildTag.value = '全部'
 }
 
-function loadGame() {
-  const raw = localStorage.getItem(SAVE_KEY)
+function loadTestFixture() {
+  if (!usesLocalTestFixture) return
+  const raw = localStorage.getItem(TEST_SAVE_KEY)
   if (!raw) return
   try {
     applySaveData(JSON.parse(raw) as Partial<SaveData>)
   } catch {
-    localStorage.removeItem(SAVE_KEY)
+    localStorage.removeItem(TEST_SAVE_KEY)
   }
 }
 
@@ -1577,7 +1586,6 @@ const cloud = useCloudSave<SaveData>({
   getLocal: buildSavePayload,
   applyRemote: (payload) => {
     applySaveData(payload)
-    localStorage.setItem(SAVE_KEY, JSON.stringify(payload))
     applyBaseStats()
   }
 })
@@ -1585,6 +1593,8 @@ const cloudSyncState = cloud.state
 const cloudUsername = cloud.username
 const cloudPassword = cloud.password
 const cloudHasSession = cloud.hasSession
+const cloudAccessReady = cloud.accessReady
+const cloudAccessBlocked = computed(() => !cloudAccessReady.value)
 const cloudConflict = cloud.conflict
 const cloudLogin = cloud.login
 const cloudRegister = cloud.register
@@ -1909,6 +1919,13 @@ function resizeCanvas() {
 
 function handleKeydown(event: KeyboardEvent) {
   const key = event.key.toLowerCase()
+  if (key === 'escape' && settingsOpen.value) {
+    settingsOpen.value = false
+    keys.clear()
+    clearTouchMovement()
+    return
+  }
+  if (settingsOpen.value) return
   if (replayRuntime.running) {
     if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '1', '2', '3'].includes(key)) markReplayIssue(`检测到人工按键：${key}`)
     return
@@ -1954,7 +1971,7 @@ function announceBanner(text: string, tone: 'normal' | 'elite' | 'victory' = 'no
 }
 
 function playSound(kind: 'hit' | 'critical' | 'kill' | 'pickup' | 'wave' | 'elite' | 'hurt' | 'victory') {
-  if (typeof window === 'undefined' || replayRuntime.running) return
+  if (typeof window === 'undefined' || replayRuntime.running || !soundEnabled.value) return
   try {
     audioContext ??= new AudioContext()
     const oscillator = audioContext.createOscillator()
@@ -4027,6 +4044,12 @@ function handleReplayVisibility() {
 }
 
 function loop(now: number) {
+  if ((settingsOpen.value || cloudAccessBlocked.value) && !replayRuntime.running) {
+    lastTime = now
+    draw()
+    animationFrame = requestAnimationFrame(loop)
+    return
+  }
   if (replayRuntime.running) {
     const frameGapMs = Math.max(0, now - replayRuntime.previousFrameAt)
     replayRuntime.previousFrameAt = now
@@ -4150,6 +4173,10 @@ async function startStage() {
 }
 
 async function startStageWithHealth(restoreHp: boolean) {
+  if (cloudAccessBlocked.value && !usesLocalTestFixture) {
+    bannerText.value = '正在读取云端存档，请稍候'
+    return
+  }
   if (rankedRunPending.value) return
   if (inventoryOverCapacity.value) {
     bannerText.value = '背包超出容量，请先返回基地整理受保护配件'
@@ -4179,7 +4206,18 @@ function returnToBase() {
   applyBaseStats()
   resetRunState()
   mode.value = 'base'
+  activeBaseWorkspace.value = 'mission'
   saveGame()
+}
+
+function openSettings() {
+  settingsOpen.value = true
+  keys.clear()
+  clearTouchMovement()
+}
+
+function closeSettings() {
+  settingsOpen.value = false
 }
 
 async function advanceAndStart() {
@@ -4202,16 +4240,21 @@ onMounted(() => {
   const canvas = canvasRef.value
   if (!canvas) return
   for (const [key, url] of Object.entries(assetUrls)) loadSprite(key as keyof typeof assetUrls, url)
-  loadGame()
+  if (!usesLocalTestFixture) localStorage.removeItem(TEST_SAVE_KEY)
+  loadTestFixture()
   resizeCanvas()
   applyBaseStats()
   movePlayerToAreaCenter()
   canPersist = true
+  soundEnabled.value = localStorage.getItem(SOUND_SETTING_KEY) !== 'false'
+  reducedMotion.value = localStorage.getItem(MOTION_SETTING_KEY) === 'true'
   cloud.initialize()
   void refreshLiveOps()
   watch(stage, (value) => {
     stageDraft.value = value
   })
+  watch(soundEnabled, (value) => localStorage.setItem(SOUND_SETTING_KEY, String(value)))
+  watch(reducedMotion, (value) => localStorage.setItem(MOTION_SETTING_KEY, String(value)))
   watch([stage, inventory, () => ({ ...attachmentAcquireOrder }), () => ({ ...resources }), () => ({ ...base }), () => ({ level: player.level, exp: player.exp, hp: player.hp }), () => equippedParts.map(attachmentKey)], saveGame, { deep: true })
   watch(bannerText, (text) => {
     if (!text) return
@@ -4278,7 +4321,8 @@ onBeforeUnmount(() => {
 })
 
   return {
-    canvasRef, mode, highestCleared, replayUi, replayResultsJson, bannerText, bannerTone,
+    canvasRef, mode, activeBaseWorkspace, settingsOpen, openSettings, closeSettings,
+    soundEnabled, reducedMotion, highestCleared, replayUi, replayResultsJson, bannerText, bannerTone,
     resources, returnToBase, player, hpPercent, damagePreview, kills, targetKills,
     nextLevelExp, runStats, currentWave, totalWaves, currentWaveDefinition, wavePlan,
     waveStatusText, bossHud, damageDirection, killNotice, elapsedSeconds, formatClock,
@@ -4321,7 +4365,7 @@ onBeforeUnmount(() => {
     shopState, shopOffers, buyShopOffer, seasonState, currentSeasonTier,
     attachmentStarCost, canStarAttachment, starAttachment,
     attachmentBreakthroughCost, canBreakthroughAttachment, breakthroughAttachment,
-    cloudSyncState, cloudUsername, cloudPassword, cloudHasSession, cloudConflict,
+    cloudSyncState, cloudUsername, cloudPassword, cloudHasSession, cloudAccessReady, cloudAccessBlocked, cloudConflict,
     cloudLogin, cloudRegister, cloudLogout, syncCloudSave, keepLocalCloudSave, useRemoteCloudSave,
     onlineLiveOps, leaderboardMetrics, leaderboardMetric, onlineLeaderboard, onlineCurrentRank, onlineSeasonStatus, rankedRunPending, rankedRunNotice, refreshLeaderboard, syncOnlineSeason,
     showMovementHint, touchMovement, setTouchMovement, clearTouchMovement

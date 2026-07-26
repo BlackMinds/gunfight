@@ -1,5 +1,5 @@
 <template>
-    <section v-if="mode === 'base'" class="equipment-panel equipment-dock" aria-label="角色装备界面">
+  <section v-if="mode === 'base' && activeBaseWorkspace === 'equipment'" class="equipment-panel equipment-dock" aria-label="角色装备界面">
       <div class="equipment-head">
         <div>
           <p class="panel-kicker">角色装备</p>
@@ -82,7 +82,7 @@ import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
 const Operator3D = defineAsyncComponent(() => import('../Operator3D.vue').then((module) => module.default))
 
 const {
-  mode, player, combatPower, equipmentLeftSlots, equipmentRightSlots,
+  mode, activeBaseWorkspace, player, combatPower, equipmentLeftSlots, equipmentRightSlots,
   equipmentIconStyle, equippedParts, attachmentSlots, activeEquipmentLabel, weapon,
   selectedEquippedAttachment, selectEquippedAttachment, sameAttachment,
   isReforgeAffixLocked, toggleReforgeAffixLock, formatAffix,

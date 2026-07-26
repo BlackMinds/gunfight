@@ -1,9 +1,48 @@
 <template>
     <section v-if="mode === 'base'" class="base-panel">
-      <div class="base-hero">
+      <header class="base-workspace-bar">
+        <div>
+          <p class="panel-kicker">外围基地 001</p>
+          <b>基地控制台</b>
+        </div>
+        <nav aria-label="基地工作区">
+          <button
+            type="button"
+            data-testid="workspace-mission"
+            :class="{ active: activeBaseWorkspace === 'mission' }"
+            :aria-pressed="activeBaseWorkspace === 'mission'"
+            @click="activeBaseWorkspace = 'mission'"
+          >
+            <span>01</span> 行动
+          </button>
+          <button
+            type="button"
+            data-testid="workspace-equipment"
+            :class="{ active: activeBaseWorkspace === 'equipment' }"
+            :aria-pressed="activeBaseWorkspace === 'equipment'"
+            @click="activeBaseWorkspace = 'equipment'"
+          >
+            <span>02</span> 配件
+          </button>
+          <button
+            type="button"
+            data-testid="workspace-growth"
+            :class="{ active: activeBaseWorkspace === 'growth' }"
+            :aria-pressed="activeBaseWorkspace === 'growth'"
+            @click="activeBaseWorkspace = 'growth'"
+          >
+            <span>03</span> 成长
+          </button>
+          <button type="button" data-testid="workspace-settings" @click="openSettings">
+            <span>⚙</span> 设置
+          </button>
+        </nav>
+      </header>
+
+      <div v-if="activeBaseWorkspace === 'mission'" class="base-hero" data-testid="mission-workspace">
         <p class="panel-kicker">外围基地</p>
-        <h1>配件整备台已开启</h1>
-        <p>挑选更好的词条底子，整理背包后再推进下一关。</p>
+        <h1>行动指挥台已就绪</h1>
+        <p>确认敌情与行动目标，完成整备后部署下一关。</p>
         <div class="resource-rail">
           <span>
             <small>重铸手续费</small>
@@ -117,7 +156,7 @@
         </div>
       </div>
 
-      <div class="base-backpack" :class="{ 'sale-mode': isSaleMode }">
+      <div v-if="activeBaseWorkspace === 'equipment'" class="base-backpack" data-testid="equipment-workspace" :class="{ 'sale-mode': isSaleMode }">
         <div class="base-backpack-head">
           <div>
             <p class="panel-kicker">配件背包</p>
@@ -281,7 +320,7 @@
         </div>
       </div>
 
-      <GameProgressionPanel class="progression-desktop" />
+      <GameProgressionPanel v-if="activeBaseWorkspace === 'growth'" class="progression-desktop" data-testid="growth-workspace" />
     </section>
 </template>
 
@@ -290,7 +329,7 @@ import GameProgressionPanel from './GameProgressionPanel.vue'
 import { useGameCanvasContext } from '~/composables/game/gameCanvasContext'
 
 const {
-  mode, resources, player, combatPower, damagePreview, fireRatePreview, nextEnemyPreview,
+  mode, activeBaseWorkspace, openSettings, resources, player, combatPower, damagePreview, fireRatePreview, nextEnemyPreview,
   operationOptions, selectedOperationMode, operationDefinition, selectOperation,
   stageType, adjustStage, stageDraft, maxSelectableStage, commitStageDraft,
   debugStageSelection, stageRewardPreview, dropProfile, inventoryOverCapacity, rankedRunPending, startStage,

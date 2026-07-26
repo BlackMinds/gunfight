@@ -37,6 +37,11 @@ async function flushPendingPromises(rounds = 12) {
   await nextTick()
 }
 
+async function openWorkspace(host: HTMLElement, workspace: 'mission' | 'equipment' | 'growth') {
+  query<HTMLButtonElement>(host, `[data-testid="workspace-${workspace}"]`).click()
+  await nextTick()
+}
+
 function unmountGame() {
   mounted?.app.unmount()
   mounted?.host.remove()
@@ -56,6 +61,15 @@ afterEach(() => {
 })
 
 describe('R2 经济闭环 UI 注入', () => {
+  it('未登录时由云端存档门禁阻止进入游戏', async () => {
+    const host = await mountGame()
+    const gate = query(host, '[data-testid="cloud-access-gate"]')
+
+    expect(gate.textContent).toContain('需要登录后才能进入')
+    expect(gate.textContent).toContain('注册或登录云端账号后才能进入游戏')
+    expect(host.querySelector('a[href*="local=1"]')).toBeNull()
+  })
+
   it('战斗 HUD 合并击杀与时间，并提供移动端触控摇杆', async () => {
     const host = await mountGame()
     query<HTMLButtonElement>(host, '[data-testid="deploy-stage"]').click()
@@ -136,20 +150,42 @@ describe('R2 经济闭环 UI 注入', () => {
     expect(query(host, '.wave-command')).not.toBeNull()
   })
 
-  it('基地按部署、背包、长期养成顺序呈现', async () => {
+  it('基地按行动、配件、成长分区呈现，并提供独立设置', async () => {
     const host = await mountGame()
     const briefing = query(host, '[data-testid="mission-briefing"]')
     const deploy = query(host, '[data-testid="deploy-stage"]')
-    const backpack = query(host, '.base-backpack')
-    const progression = query(host, '.progression-panel')
 
     expect(briefing.getAttribute('aria-labelledby')).toBe('mission-briefing-title')
     expect(briefing.querySelector('h2')?.textContent).toContain('部署简报')
     expect(briefing.querySelectorAll('.stage-picker button')).toHaveLength(4)
     expect(briefing.querySelectorAll('.reward-preview article')).toHaveLength(4)
     expect(query(host, '.battlefield').getAttribute('aria-label')).toContain('金色边界')
-    expect(deploy.compareDocumentPosition(backpack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(backpack.compareDocumentPosition(progression) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(deploy).not.toBeNull()
+    expect(host.querySelector('.base-backpack')).toBeNull()
+    expect(host.querySelector('.progression-panel')).toBeNull()
+
+    await openWorkspace(host, 'equipment')
+    expect(query(host, '[data-testid="equipment-workspace"]')).not.toBeNull()
+    expect(query(host, '.equipment-dock')).not.toBeNull()
+    expect(host.querySelector('[data-testid="mission-workspace"]')).toBeNull()
+
+    await openWorkspace(host, 'growth')
+    const progression = query(host, '[data-testid="growth-workspace"]')
+    expect(progression.textContent).toContain('军械与行动中枢')
+    expect(progression.querySelector('.cloud-auth-form')).toBeNull()
+    expect(progression.querySelector('input[autocomplete="username"]')).toBeNull()
+
+    query<HTMLButtonElement>(host, '[data-testid="workspace-settings"]').click()
+    await nextTick()
+    expect(query(host, '[role="dialog"]').textContent).toContain('账号与云存档')
+    const soundSetting = query<HTMLInputElement>(host, '[data-testid="sound-setting"]')
+    const motionSetting = query<HTMLInputElement>(host, '[data-testid="motion-setting"]')
+    expect(soundSetting.checked).toBe(true)
+    soundSetting.click()
+    motionSetting.click()
+    await nextTick()
+    expect(localStorage.getItem('gunfight-setting-sound')).toBe('false')
+    expect(query(host, '.game-screen').classList.contains('reduce-motion')).toBe(true)
   })
 
   it('已装备配件可直接选择并强化', async () => {
@@ -157,6 +193,7 @@ describe('R2 经济闭环 UI 注入', () => {
     fixture.equipped[0].id = 'starter-legacy'
     fixture.equipped[0].subAffixes = []
     const host = await mountGame(fixture)
+    await openWorkspace(host, 'equipment')
     query<HTMLButtonElement>(host, '.equipment-manage-trigger').click()
     await nextTick()
 
@@ -172,6 +209,7 @@ describe('R2 经济闭环 UI 注入', () => {
 
   it('注入 30 件时展示 6 件自动回收明细，出售全选跳过 6 件收藏', async () => {
     const host = await mountGame(createR2InventorySave({ count: 30, favoriteIndexes: [24, 25, 26, 27, 28, 29] }))
+    await openWorkspace(host, 'equipment')
 
     expect(query(host, '[data-testid="inventory-capacity"]').textContent).toContain('容量 24 / 24 · 收藏 6')
     const overflow = query(host, '[data-testid="overflow-salvage-base"]')
@@ -196,6 +234,7 @@ describe('R2 经济闭环 UI 注入', () => {
 
   it('收藏状态保存后重载仍受出售保护', async () => {
     let host = await mountGame(createR2InventorySave({ count: 24, resources: { gold: 500, alloy: 10, parts: 50 } }))
+    await openWorkspace(host, 'equipment')
     const target = attachmentShell(host, 'r2-item-23')
     query<HTMLButtonElement>(target, '[data-testid="favorite-toggle"]').click()
     await nextTick()
@@ -205,6 +244,7 @@ describe('R2 经济闭环 UI 注入', () => {
 
     unmountGame()
     host = await mountGame()
+    await openWorkspace(host, 'equipment')
     expect(query<HTMLButtonElement>(attachmentShell(host, 'r2-item-23'), '[data-testid="favorite-toggle"]').textContent).toContain('取消收藏')
     query<HTMLButtonElement>(host, '[data-testid="sale-mode-toggle"]').click()
     await nextTick()
@@ -213,6 +253,7 @@ describe('R2 经济闭环 UI 注入', () => {
 
   it('注入 25 件后锁定副词条会显示零件、金币、合金三项缺口并阻止重铸', async () => {
     const host = await mountGame(createR2InventorySave({ count: 25, favoriteIndexes: [24] }))
+    await openWorkspace(host, 'equipment')
     const target = attachmentShell(host, 'r2-item-24')
     const lockButton = query<HTMLButtonElement>(target, '[data-testid="affix-lock"]')
     lockButton.click()
@@ -229,10 +270,11 @@ describe('R2 经济闭环 UI 注入', () => {
   it('27 件全部收藏时保持实例并阻断部署与出售', async () => {
     const host = await mountGame(createR2InventorySave({ count: 27, favoriteIndexes: Array.from({ length: 27 }, (_, index) => index) }))
 
-    expect(query(host, '[data-testid="inventory-capacity"]').textContent).toContain('容量 27 / 24 · 收藏 27')
     expect(query(host, '[data-testid="inventory-capacity-blocker"]').textContent).toContain('背包超出容量')
     expect(query<HTMLButtonElement>(host, '[data-testid="deploy-stage"]').disabled).toBe(true)
 
+    await openWorkspace(host, 'equipment')
+    expect(query(host, '[data-testid="inventory-capacity"]').textContent).toContain('容量 27 / 24 · 收藏 27')
     query<HTMLButtonElement>(host, '[data-testid="sale-mode-toggle"]').click()
     await nextTick()
     expect(query<HTMLButtonElement>(host, '[data-testid="sale-select-all"]').disabled).toBe(true)

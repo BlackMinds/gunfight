@@ -33,6 +33,7 @@ describe('云存档客户端同步队列', () => {
     cloud.username.value = 'player_1'
     cloud.password.value = 'password-123'
     await cloud.login()
+    expect(cloud.accessReady.value).toBe(true)
 
     cloud.queueSync(createCloudSave({ savedAt: 200 }))
     await vi.advanceTimersByTimeAsync(1200)
@@ -71,7 +72,7 @@ describe('云存档客户端同步队列', () => {
 
     expect(cloud.state.status).toBe('conflict')
     expect(cloud.conflict.value).toEqual({ revision: 3, payload: cloudPayload, savedAt: '2026-07-22T08:03:00.000Z' })
-    expect(applyRemote).not.toHaveBeenCalled()
+    expect(applyRemote).toHaveBeenCalledTimes(1)
     expect(cloud.revision.value).toBe(2)
   })
 
@@ -112,6 +113,7 @@ describe('云存档客户端同步队列', () => {
     await pending
 
     expect(cloud.state.status).toBe('signed-out')
-    expect(cloud.state.detail).toBe('本地存档继续可用；登录后恢复自动同步。')
+    expect(cloud.accessReady.value).toBe(false)
+    expect(cloud.state.detail).toBe('已退出账号，请重新登录后继续游戏。')
   })
 })

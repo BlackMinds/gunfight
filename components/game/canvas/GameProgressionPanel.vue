@@ -2,7 +2,7 @@
   <section class="progression-panel" aria-label="长线成长系统">
     <div class="progression-head">
       <div><p class="panel-kicker">长线成长</p><h2>军械与行动中枢</h2></div>
-      <span>武器、天赋、套装、离线、任务与云存档</span>
+      <span>武器、天赋、套装、离线收益、任务与赛季</span>
     </div>
     <GameWeaponProgression />
     <GameTalentProgression />

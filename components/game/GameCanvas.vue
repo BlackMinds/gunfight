@@ -1,5 +1,8 @@
 <template>
-  <main class="game-screen" :class="`mode-${mode}`">
+  <main
+    class="game-screen"
+    :class="[`mode-${mode}`, `base-workspace-${activeBaseWorkspace}`, { 'reduce-motion': reducedMotion, 'settings-active': settingsOpen }]"
+  >
     <canvas ref="canvasRef" class="battlefield" aria-label="俯视战场地图，金色边界内为当前行动区域" />
 
     <section v-if="replayUi.visible && replayUi.status !== 'complete'" class="r3-replay-status" data-testid="replay-status" aria-live="polite">
@@ -15,7 +18,8 @@
     <GameCombatHud />
     <GameBasePanel />
     <GameEquipmentPanel />
-    <GameProgressionPanel class="progression-mobile" />
+    <GameSettingsPanel />
+    <GameCloudGate />
     <GameSettlementPanel />
 
     <div v-if="bannerText" class="combat-banner" :class="`tone-${bannerTone}`">{{ bannerText }}</div>
@@ -25,8 +29,9 @@
 <script setup lang="ts">
 import GameBasePanel from './canvas/GameBasePanel.vue'
 import GameCombatHud from './canvas/GameCombatHud.vue'
+import GameCloudGate from './canvas/GameCloudGate.vue'
 import GameEquipmentPanel from './canvas/GameEquipmentPanel.vue'
-import GameProgressionPanel from './canvas/GameProgressionPanel.vue'
+import GameSettingsPanel from './canvas/GameSettingsPanel.vue'
 import GameSettlementPanel from './canvas/GameSettlementPanel.vue'
 import { provideGameCanvasContext } from '~/composables/game/gameCanvasContext'
 import { useGameCanvas } from '~/composables/game/useGameCanvas'
@@ -34,7 +39,10 @@ import { useGameCanvas } from '~/composables/game/useGameCanvas'
 const game = useGameCanvas()
 provideGameCanvasContext(game)
 
-const { canvasRef, mode, replayUi, replayResultsJson, bannerText, bannerTone } = game
+const {
+  canvasRef, mode, activeBaseWorkspace, settingsOpen, reducedMotion,
+  replayUi, replayResultsJson, bannerText, bannerTone
+} = game
 </script>
 
 <style src="./GameCanvas.css"></style>
