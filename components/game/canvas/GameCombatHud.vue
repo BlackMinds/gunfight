@@ -81,6 +81,7 @@
         <i v-for="wave in wavePlan" :key="wave.index" :class="{ active: wave.index === currentWave, cleared: wave.index < currentWave }" />
       </div>
       <small>{{ waveStatusText }}</small>
+      <small v-if="rankedRunNotice" class="ranked-run-notice" data-testid="ranked-run-notice" role="status">{{ rankedRunNotice }}</small>
       <small v-if="nextEnemyPreview.stageBandLabel" class="combat-stage-intel" data-testid="combat-stage-intel">
         {{ nextEnemyPreview.stageBandLabel }} · {{ nextEnemyPreview.factionLabel }}（{{ nextEnemyPreview.factionSummary }}）· {{ nextEnemyPreview.warzoneLandmark }} · {{ nextEnemyPreview.eliteAffixCount }} 词缀 · {{ operationDefinition.id === 'survival' ? '90 秒连续压力' : `Boss ${nextEnemyPreview.bossPhaseCount} 阶段` }}
       </small>
@@ -162,7 +163,7 @@ const {
   nextLevelExp, runStats, currentWave, totalWaves, currentWaveDefinition, wavePlan,
   waveStatusText, nextEnemyPreview, operationDefinition, operationProgressText, bossHud, damageDirection, killNotice, elapsedSeconds, formatClock,
   skills, useSkill, upgradeChoices, chooseUpgrade, weapon, weaponAmmo, weaponReloadTimer, weaponChargeTimer, weaponCharging,
-  showMovementHint, touchMovement, setTouchMovement, clearTouchMovement
+  showMovementHint, rankedRunNotice, touchMovement, setTouchMovement, clearTouchMovement
 } = useGameCanvasContext()
 
 const joystickRef = ref<HTMLElement | null>(null)

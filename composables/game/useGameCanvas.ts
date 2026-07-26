@@ -1598,11 +1598,24 @@ const onlineLiveOps = ref<null | {
   activity: { id: string; label: string; operation: string; bonus: string; startsAt: string; endsAt: string }
   nextActivity: { id: string; label: string; operation: string; bonus: string; startsAt: string }
 }>(null)
+type RankedRunTicket = {
+  runId: string
+  seasonId: string
+  activityId: string
+  mode: RankedOperationMode
+  stage: number
+}
 const leaderboardMetric = ref<LeaderboardMetric>('event-score')
 const onlineLeaderboard = ref<Array<{ username: string; score: number; rank: number; currentUser: boolean }>>([])
 const onlineCurrentRank = ref<number | null>(null)
 const onlineSeasonStatus = reactive({ loading: false, label: '尚未同步联网赛季', error: '' })
-const activeRankedRun = ref<null | { runId: string; seasonId: string; activityId: string; mode: RankedOperationMode; stage: number }>(null)
+const activeRankedRun = ref<RankedRunTicket | null>(null)
+const rankedRunPending = ref(false)
+const rankedRunNotice = computed(() => activeRankedRun.value
+  ? '联网排位 · 已取得服务端票据'
+  : onlineSeasonStatus.label.startsWith('本地行动')
+    ? onlineSeasonStatus.error || onlineSeasonStatus.label
+    : '')
 let rankedRunGeneration = 0
 
 async function refreshLiveOps() {
@@ -1623,18 +1636,31 @@ function currentActivityId() {
   return onlineLiveOps.value?.activity.id ?? liveOpsSnapshot().activity.id
 }
 
-function beginRankedRun(operationMode: RankedOperationMode, runStage: number) {
+async function beginRankedRun(operationMode: RankedOperationMode, runStage: number) {
   const generation = ++rankedRunGeneration
   activeRankedRun.value = null
-  if (!cloudHasSession.value || replayRuntime.running) return
-  void cloud.apiRequest<NonNullable<typeof activeRankedRun.value>>('/api/ranked-run/start', 'POST', { mode: operationMode, stage: runStage })
-    .then((ticket) => {
-      if (generation === rankedRunGeneration && mode.value === 'battle' && operationMode === activeOperationMode.value && runStage === stage.value) activeRankedRun.value = ticket
-    })
-    .catch((error) => {
-      if (generation !== rankedRunGeneration) return
-      onlineSeasonStatus.error = error instanceof Error ? `本局未计入联网排行：${error.message}` : '本局未取得排位票据'
-    })
+  if (replayRuntime.running) return
+  if (!cloudHasSession.value) {
+    onlineSeasonStatus.label = '本地行动，不计入排行榜（未登录）'
+    onlineSeasonStatus.error = ''
+    return
+  }
+  rankedRunPending.value = true
+  onlineSeasonStatus.label = '正在取得排位票据，战斗尚未开始'
+  onlineSeasonStatus.error = ''
+  try {
+    const ticket = await cloud.apiRequest<RankedRunTicket>('/api/ranked-run/start', 'POST', { mode: operationMode, stage: runStage })
+    if (generation !== rankedRunGeneration) return
+    activeRankedRun.value = ticket
+    onlineSeasonStatus.label = `${ticket.seasonId} 排位票据已取得`
+  } catch (error) {
+    if (generation !== rankedRunGeneration) return
+    const reason = error instanceof Error ? error.message : '排位服务暂时不可用'
+    onlineSeasonStatus.label = '本地行动，不计入排行榜'
+    onlineSeasonStatus.error = `排位票据获取失败：${reason}；已降级为本地行动，不计入排行榜`
+  } finally {
+    if (generation === rankedRunGeneration) rankedRunPending.value = false
+  }
 }
 
 async function completeRankedRun() {
@@ -4119,11 +4145,12 @@ function clearCombatFeedback() {
   bossHud.visible = false
 }
 
-function startStage() {
-  startStageWithHealth(true)
+async function startStage() {
+  await startStageWithHealth(true)
 }
 
-function startStageWithHealth(restoreHp: boolean) {
+async function startStageWithHealth(restoreHp: boolean) {
+  if (rankedRunPending.value) return
   if (inventoryOverCapacity.value) {
     bannerText.value = '背包超出容量，请先返回基地整理受保护配件'
     return
@@ -4135,11 +4162,12 @@ function startStageWithHealth(restoreHp: boolean) {
     return
   }
   activeOperationMode.value = nextOperation
+  await beginRankedRun(activeOperationMode.value, stage.value)
   applyBaseStats()
   resetRunState(restoreHp)
   mode.value = 'battle'
-  beginRankedRun(activeOperationMode.value, stage.value)
-  announceBanner(`${getOperationDefinition(activeOperationMode.value).shortLabel} · 第 1 波 · ${currentWaveDefinition.value?.label}`, 'normal')
+  const rankedPrefix = !activeRankedRun.value && !replayRuntime.running ? '本地行动 · 不计排行 · ' : ''
+  announceBanner(`${rankedPrefix}${getOperationDefinition(activeOperationMode.value).shortLabel} · 第 1 波 · ${currentWaveDefinition.value?.label}`, 'normal')
   playSound('wave')
 }
 
@@ -4154,7 +4182,8 @@ function returnToBase() {
   saveGame()
 }
 
-function advanceAndStart() {
+async function advanceAndStart() {
+  if (rankedRunPending.value) return
   if (inventoryOverCapacity.value) {
     bannerText.value = '背包超出容量，请先返回基地整理受保护配件'
     return
@@ -4166,7 +4195,7 @@ function advanceAndStart() {
   settlementEquipNotice.value = null
   overflowSalvageNotice.value = null
   saveGame()
-  startStageWithHealth(false)
+  await startStageWithHealth(false)
 }
 
 onMounted(() => {
@@ -4294,7 +4323,7 @@ onBeforeUnmount(() => {
     attachmentBreakthroughCost, canBreakthroughAttachment, breakthroughAttachment,
     cloudSyncState, cloudUsername, cloudPassword, cloudHasSession, cloudConflict,
     cloudLogin, cloudRegister, cloudLogout, syncCloudSave, keepLocalCloudSave, useRemoteCloudSave,
-    onlineLiveOps, leaderboardMetrics, leaderboardMetric, onlineLeaderboard, onlineCurrentRank, onlineSeasonStatus, refreshLeaderboard, syncOnlineSeason,
+    onlineLiveOps, leaderboardMetrics, leaderboardMetric, onlineLeaderboard, onlineCurrentRank, onlineSeasonStatus, rankedRunPending, rankedRunNotice, refreshLeaderboard, syncOnlineSeason,
     showMovementHint, touchMovement, setTouchMovement, clearTouchMovement
   }
 }

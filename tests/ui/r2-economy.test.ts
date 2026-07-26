@@ -32,6 +32,11 @@ async function mountGame(fixture?: GameSaveFixture) {
   return host
 }
 
+async function flushPendingPromises(rounds = 12) {
+  for (let index = 0; index < rounds; index += 1) await Promise.resolve()
+  await nextTick()
+}
+
 function unmountGame() {
   mounted?.app.unmount()
   mounted?.host.remove()
@@ -47,20 +52,88 @@ afterEach(() => {
   unmountGame()
   vi.clearAllTimers()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe('R2 经济闭环 UI 注入', () => {
   it('战斗 HUD 合并击杀与时间，并提供移动端触控摇杆', async () => {
     const host = await mountGame()
     query<HTMLButtonElement>(host, '[data-testid="deploy-stage"]').click()
-    await nextTick()
+    await flushPendingPromises()
 
     expect(query(host, '.wave-command').textContent).toContain('击杀 0/')
     expect(query(host, '.wave-command').textContent).toContain('00:00')
     expect(query(host, '.hud-left .stat-board').textContent).not.toContain('击杀数')
     expect(query(host, '.hud-right').textContent).not.toContain('总伤害')
+    expect(query(host, '[data-testid="ranked-run-notice"]').textContent).toContain('本地行动，不计入排行榜')
     expect(query(host, '.mobile-joystick').getAttribute('aria-label')).toBe('触控移动摇杆')
     expect(host.querySelectorAll('.skill-bar button')).toHaveLength(3)
+  })
+
+  it('登录玩家等待服务端票据后才进入战斗，开票期间禁用重复部署', async () => {
+    localStorage.setItem('gunfight-cloud-token', 'test-token')
+    localStorage.setItem('gunfight-cloud-user', 'player_1')
+    let resolveTicket!: (response: Response) => void
+    const pendingTicket = new Promise<Response>((resolve) => {
+      resolveTicket = resolve
+    })
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/cloud-save') return Promise.resolve(new Response(JSON.stringify({ revision: 0, payload: null, savedAt: null }), { status: 200 }))
+      if (path === '/api/live-ops') {
+        return Promise.resolve(new Response(JSON.stringify({
+          serverNow: '2026-07-26T00:00:00.000Z',
+          season: { id: 'S01-联合作战', index: 1, startsAt: '2026-07-01T00:00:00.000Z', endsAt: '2026-08-01T00:00:00.000Z' },
+          activity: { id: 'boss-hunt', label: '首领猎杀', operation: 'challenge', bonus: '精密元件 +1', startsAt: '2026-07-22T00:00:00.000Z', endsAt: '2026-07-29T00:00:00.000Z' },
+          nextActivity: { id: 'bounty-surge', label: '悬赏增援', operation: 'bounty', bonus: '荣誉币 +25%', startsAt: '2026-07-29T00:00:00.000Z' }
+        }), { status: 200 }))
+      }
+      if (path === '/api/ranked-run/start') return pendingTicket
+      return Promise.reject(new Error(`unexpected fetch: ${path}`))
+    }))
+    const host = await mountGame()
+
+    const deploy = query<HTMLButtonElement>(host, '[data-testid="deploy-stage"]')
+    deploy.click()
+    await nextTick()
+
+    expect(host.querySelector('.wave-command')).toBeNull()
+    expect(deploy.disabled).toBe(true)
+    expect(deploy.textContent).toContain('正在取得排位票据')
+    expect(query(host, '[data-testid="ranked-ticket-pending"]').textContent).toContain('票据后开始')
+
+    resolveTicket(new Response(JSON.stringify({
+      runId: 'run-ui-1',
+      seasonId: 'S01-联合作战',
+      activityId: 'boss-hunt',
+      mode: 'campaign',
+      stage: 1
+    }), { status: 200 }))
+    await flushPendingPromises()
+
+    expect(query(host, '.wave-command').textContent).toContain('第 1 /')
+    expect(query(host, '[data-testid="ranked-run-notice"]').textContent).toContain('已取得服务端票据')
+  })
+
+  it('登录玩家开票失败后明确降级为本地行动并正常进入战斗', async () => {
+    localStorage.setItem('gunfight-cloud-token', 'test-token')
+    localStorage.setItem('gunfight-cloud-user', 'player_1')
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/cloud-save') return Promise.resolve(new Response(JSON.stringify({ revision: 0, payload: null, savedAt: null }), { status: 200 }))
+      if (path === '/api/live-ops') return Promise.reject(new Error('offline live ops'))
+      if (path === '/api/ranked-run/start') return Promise.resolve(new Response(JSON.stringify({ statusMessage: '排位行动服务暂时不可用' }), { status: 503 }))
+      return Promise.reject(new Error(`unexpected fetch: ${path}`))
+    }))
+    const host = await mountGame()
+
+    query<HTMLButtonElement>(host, '[data-testid="deploy-stage"]').click()
+    await flushPendingPromises()
+
+    const notice = query(host, '[data-testid="ranked-run-notice"]').textContent ?? ''
+    expect(notice).toContain('排位票据获取失败')
+    expect(notice).toContain('本地行动，不计入排行榜')
+    expect(query(host, '.wave-command')).not.toBeNull()
   })
 
   it('基地按部署、背包、长期养成顺序呈现', async () => {

@@ -1,3 +1,7 @@
+BEGIN;
+
+SELECT pg_advisory_xact_lock(hashtext('gunfight:20260726_trusted_ranked'));
+
 CREATE TABLE IF NOT EXISTS gunfight_schema_migrations (
   version TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -62,7 +66,27 @@ CREATE INDEX IF NOT EXISTS gunfight_ranked_runs_user_active ON gunfight_ranked_r
 CREATE UNIQUE INDEX IF NOT EXISTS gunfight_ranked_runs_one_active ON gunfight_ranked_runs (user_id) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS gunfight_ranked_runs_season_completed ON gunfight_ranked_runs (season_id, user_id, completed_at) WHERE status = 'completed';
 
-INSERT INTO gunfight_schema_migrations (version)
-SELECT '20260726_trusted_ranked'
-WHERE NOT EXISTS (SELECT 1 FROM gunfight_users)
-ON CONFLICT (version) DO NOTHING;
+DO $migration$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM gunfight_schema_migrations
+    WHERE version = '20260726_trusted_ranked'
+  ) THEN
+    -- 上线前没有正式玩家：测试榜单和测试票据不具备可信继承依据。
+    DELETE FROM gunfight_ranked_runs;
+    DELETE FROM gunfight_season_scores;
+    DELETE FROM gunfight_ranked_progress;
+
+    -- 绝不从云存档、本地赛季字段或旧榜单推导可信排位进度。
+    INSERT INTO gunfight_ranked_progress (user_id, highest_stage, updated_at)
+    SELECT id, 0, NOW()
+    FROM gunfight_users;
+
+    INSERT INTO gunfight_schema_migrations (version)
+    VALUES ('20260726_trusted_ranked');
+  END IF;
+END
+$migration$;
+
+COMMIT;

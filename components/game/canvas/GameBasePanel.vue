@@ -76,7 +76,8 @@
           </div>
           <p v-if="debugStageSelection" class="debug-stage-note">开发调试选关已开启 · R4 / R5 发布验收已完成，正式版本上限为第 10000 关</p>
           <div class="base-actions">
-            <button type="button" class="primary" data-testid="deploy-stage" :disabled="inventoryOverCapacity" @click="startStage">部署 · {{ operationDefinition.label }}</button>
+            <button type="button" class="primary" data-testid="deploy-stage" :disabled="inventoryOverCapacity || rankedRunPending" @click="startStage">{{ rankedRunPending ? '正在取得排位票据…' : `部署 · ${operationDefinition.label}` }}</button>
+            <p v-if="rankedRunPending" class="capacity-blocker" data-testid="ranked-ticket-pending" role="status">登录行动将在取得服务端排位票据后开始。</p>
             <p v-if="inventoryOverCapacity" class="capacity-blocker" data-testid="inventory-capacity-blocker" role="alert">背包超出容量：请取消部分收藏保护、装备或出售配件后再部署。</p>
           </div>
           <div class="reward-preview" aria-label="奖励预览">
@@ -292,7 +293,7 @@ const {
   mode, resources, player, combatPower, damagePreview, fireRatePreview, nextEnemyPreview,
   operationOptions, selectedOperationMode, operationDefinition, selectOperation,
   stageType, adjustStage, stageDraft, maxSelectableStage, commitStageDraft,
-  debugStageSelection, stageRewardPreview, dropProfile, inventoryOverCapacity, startStage,
+  debugStageSelection, stageRewardPreview, dropProfile, inventoryOverCapacity, rankedRunPending, startStage,
   stageLabel, nextLevelExp, expToNextLevel, expPercent, characterStats, isSaleMode,
   attachmentSwapLabel, inventoryNearCapacity, inventoryCapacityLabel, favoriteAttachmentCount,
   filteredInventory, inventory, toggleSaleMode, selectedInventorySort, inventorySortOptions,

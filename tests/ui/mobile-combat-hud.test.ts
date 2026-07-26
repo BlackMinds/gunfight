@@ -56,6 +56,7 @@ function createContext() {
     weaponChargeTimer: ref(0),
     weaponCharging: ref(false),
     showMovementHint: ref(false),
+    rankedRunNotice: ref('本地行动，不计入排行榜'),
     touchMovement,
     setTouchMovement,
     clearTouchMovement
@@ -93,6 +94,7 @@ describe('移动端战斗 HUD', () => {
     expect(intel?.textContent).toContain('终局汇聚点')
     expect(intel?.textContent).toContain('4 词缀')
     expect(intel?.textContent).toContain('Boss 5 阶段')
+    expect(root.querySelector('[data-testid="ranked-run-notice"]')?.textContent).toContain('本地行动，不计入排行榜')
   })
 
   it('升级选择出现时让角色 HUD 退出点击层，并将完整卡片作为模态选择项', async () => {
