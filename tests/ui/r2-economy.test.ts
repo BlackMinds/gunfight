@@ -84,6 +84,23 @@ describe('R2 经济闭环 UI 注入', () => {
     expect(host.querySelectorAll('.skill-bar button')).toHaveLength(3)
   })
 
+  it('数字小键盘关闭 NumLock 时仍能用 1/2/3 触发技能', async () => {
+    const host = await mountGame()
+    query<HTMLButtonElement>(host, '[data-testid="deploy-stage"]').click()
+    await flushPendingPromises()
+
+    const skillButtons = Array.from(host.querySelectorAll<HTMLButtonElement>('.skill-bar button'))
+    expect(skillButtons).toHaveLength(3)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', code: 'Numpad1' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'Numpad2' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', code: 'Numpad3' }))
+    await nextTick()
+
+    expect(skillButtons.every((button) => button.disabled)).toBe(true)
+    expect(skillButtons.every((button) => button.textContent?.includes('秒'))).toBe(true)
+  })
+
   it('登录玩家等待服务端票据后才进入战斗，开票期间禁用重复部署', async () => {
     localStorage.setItem('gunfight-cloud-token', 'test-token')
     localStorage.setItem('gunfight-cloud-user', 'player_1')

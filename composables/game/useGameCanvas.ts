@@ -68,6 +68,7 @@ import { getR5WarzoneTheme, r5BossHpMultiplierForStage, r5CampaignGrowthForHighe
 import { CURRENT_SAVE_VERSION, emptyLegacyBase, migrateAttachmentIdentity } from '~/shared/game/save'
 import { R3_REPLAY_FIXED_DELTA, clockwisePatrolVector, createR3ReplayPlan, createR4ReplayPlan, createR5ReplayPlan, createSeededRandom, supportedRareReforges, type R3ReplayPlanEntry, type R3ReplaySample, type R4ReplayPlanEntry, type R4ReplaySample, type R5ReplayPlanEntry, type R5ReplaySample } from '~/shared/game/replay'
 import { countWaveEnemies, enemyKindForWave, levelTuning, resolvedBossPhases, resolvedSpawnInterval } from '~/shared/game/waves'
+import { normalizeGameControlKey } from '~/shared/game/controls'
 import { buildStrategyInsights, dpsGapPercent, durationVerdict, emptyR5CombatTelemetry, recordAffixCombination, type AttachmentContribution, type R5CombatTelemetry, type WaveRunRecord } from '~/shared/game/telemetry'
 import {
   applyElementStatus,
@@ -1918,7 +1919,7 @@ function resizeCanvas() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  const key = event.key.toLowerCase()
+  const key = normalizeGameControlKey(event)
   if (key === 'escape' && settingsOpen.value) {
     settingsOpen.value = false
     keys.clear()
@@ -1943,7 +1944,7 @@ function handleKeydown(event: KeyboardEvent) {
 
 function handleKeyup(event: KeyboardEvent) {
   if (replayRuntime.running) return
-  keys.delete(event.key.toLowerCase())
+  keys.delete(normalizeGameControlKey(event))
 }
 
 function inputVector(): Vec {
